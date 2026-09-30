@@ -32,3 +32,11 @@ def team_table(team: dict[str, list[str]], type_chart: dict) -> pd.DataFrame:
         by=["# weak", "# resist", "total"],
         ascending=[False, True, False],
     )
+
+def coverage_gaps(team: dict[str, list[str]], type_chart: dict) -> set[str]:
+    """Types the team's own types can't hit super-effectively."""
+    team_types = {t for types in team.values() for t in types}
+    covered = set()
+    for attacking_type in team_types:
+        covered |= set(type_chart[attacking_type]["double_damage_to"])
+    return set(type_chart) - covered

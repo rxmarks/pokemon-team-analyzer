@@ -1,4 +1,4 @@
-from pokedex.analysis import multiplier, team_table
+from pokedex.analysis import coverage_gaps, multiplier, team_table
 from pokedex.fetch import get_types, load_type_chart
 import pandas as pd
 pd.set_option("display.max_columns", None)
@@ -17,6 +17,7 @@ def main() -> None:
     table = team_table(team, type_chart)
     print(table)
 
+    print("Coverage gaps:", coverage_gaps(team, type_chart))
 
 if __name__ == "__main__":
     main()
