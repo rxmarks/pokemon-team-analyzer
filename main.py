@@ -1,6 +1,7 @@
 from pokedex.analysis import multiplier, team_table
 from pokedex.fetch import get_types, load_type_chart
 import pandas as pd
+pd.set_option("display.max_columns", None)
 pd.set_option("display.width", 200)
 
 SAMPLE_TEAM = ["dragonite", "gyarados", "garchomp", "ferrothorn", "togekiss", "tyranitar"]
