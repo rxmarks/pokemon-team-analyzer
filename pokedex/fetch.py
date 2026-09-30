@@ -4,7 +4,7 @@ import json
 import requests
 
 BASE_URL = "https://pokeapi.co/api/v2"
-DATA_PATH = Path("data/types.json")
+DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "types.json"
 
 TYPE_NAMES = [
     "normal",
