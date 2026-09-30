@@ -40,3 +40,47 @@ def coverage_gaps(team: dict[str, list[str]], type_chart: dict) -> set[str]:
     for attacking_type in team_types:
         covered |= set(type_chart[attacking_type]["double_damage_to"])
     return set(type_chart) - covered
+
+def team_badness(team: dict[str, list[str]], type_chart: dict) -> int:
+    """Problem types (more weak than resist) + offensive coverage gaps. Lower is better."""
+    table = team_table(team, type_chart)
+    problem_types = int((table["# weak"] > table["# resist"]).sum())
+    return problem_types + len(coverage_gaps(team, type_chart))
+
+def team_weak_total(team: dict[str, list[str]], type_chart: dict) -> int:
+    """Total number of (attack type, member) pairs where the member is weak. Tiebreaker."""
+    return int(team_table(team, type_chart)["# weak"].sum())
+
+def suggest_swaps(
+    team: dict[str, list[str]],
+    candidates: dict[str, list[str]],
+    type_chart: dict,
+    top_n: int = 5,
+) -> pd.DataFrame:
+    """For each candidate, find the best member to replace and rank by improvement."""
+    base = team_badness(team, type_chart)
+    results = []
+
+    for cand_name, cand_types in candidates.items():
+        if cand_name in team:
+            continue
+        best = None
+        for member in team:
+            new_team = {n: t for n, t in team.items() if n != member}
+            new_team[cand_name] = cand_types
+            score = (team_badness(new_team, type_chart), team_weak_total(new_team, type_chart))
+            if best is None or score < (best["new_badness"], best["weak_total"]):
+                best = {
+                    "candidate": cand_name,
+                    "replaces": member,
+                    "new_badness": score[0],
+                    "weak_total": score[1],
+                    "improvement": base - score[0],
+                }
+        results.append(best)
+
+    ranked = pd.DataFrame(results).sort_values(
+        by=["improvement", "weak_total", "candidate"],
+        ascending=[False, True, True],
+    )
+    return ranked.head(top_n).reset_index(drop=True)
