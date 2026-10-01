@@ -1,19 +1,26 @@
+import pandas as pd
 import requests
 import streamlit as st
-import pandas as pd
 
-from pokedex.analysis import coverage_gaps, stat_warnings, suggest_swaps, team_badness, team_table
-from pokedex.fetch import get_all_pokemon_names, get_stats, get_types, load_type_chart
+from pokedex.analysis import (
+    coverage_gaps,
+    stat_warnings,
+    suggest_swaps,
+    team_badness,
+    team_table,
+)
+from pokedex.fetch import (
+    get_all_pokemon_names,
+    get_stats,
+    get_types,
+    load_pokemon_cache,
+    load_type_chart,
+)
 
 st.set_page_config(page_title="Pokémon Team Analyzer", layout="wide")
 
-CANDIDATES = [
-    "lucario", "metagross", "scizor", "heatran", "magnezone",
-    "azumarill", "clefable", "conkeldurr", "excadrill", "empoleon",
-    "blissey", "skarmory", "corviknight", "breloom", "infernape",
-    "weavile", "gengar", "volcarona", "hydreigon", "rotom-wash",
-]
 DEFAULT_TEAM = ["dragonite", "gyarados", "garchomp", "ferrothorn", "togekiss", "tyranitar"]
+MIN_BST = 500
 
 
 @st.cache_data
@@ -30,9 +37,22 @@ def cached_types(name: str) -> list[str]:
 def cached_names() -> list[str]:
     return get_all_pokemon_names()
 
+
 @st.cache_data
 def cached_stats(name: str) -> dict[str, int]:
     return get_stats(name)
+
+
+@st.cache_data
+def cached_candidates() -> dict[str, list[str]]:
+    cache = load_pokemon_cache()
+    return {
+        name: d["types"]
+        for name, d in cache.items()
+        if sum(d["stats"].values()) >= MIN_BST
+        and not any(tag in name for tag in ("-gmax", "-totem"))
+    }
+
 
 def color_multiplier(value):
     if value >= 4:
@@ -101,7 +121,15 @@ else:
     st.success("Team has speed, physical, and special attackers covered.")
 
 st.subheader("Swap suggestions")
-st.write(f"Current team badness: **{team_badness(team, chart)}** (problem types + coverage gaps, lower is better)")
-with st.spinner("Checking candidates..."):
-    candidates = {c: cached_types(c) for c in CANDIDATES}
+st.write(
+    f"Current team badness: **{team_badness(team, chart)}** "
+    "(problem types + coverage gaps, lower is better)"
+)
+
+candidates = cached_candidates()
+if not candidates:
+    st.error("No candidates loaded. Check that data/pokemon.json exists and isn't empty.")
+    st.stop()
+
+st.caption(f"Searching {len(candidates)} Pokémon with base stat total {MIN_BST}+.")
 st.dataframe(suggest_swaps(team, candidates, chart), width="stretch", hide_index=True)
