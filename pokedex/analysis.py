@@ -84,3 +84,17 @@ def suggest_swaps(
         ascending=[False, True, True],
     )
     return ranked.head(top_n).reset_index(drop=True)
+
+FAST_SPEED = 100
+
+def stat_warnings(team_stats: dict[str, dict[str, int]]) -> list[str]:
+    """Flag missing team roles based on base stats."""
+    stats = list(team_stats.values())
+    warnings = []
+    if not any(s["speed"] >= FAST_SPEED for s in stats):
+        warnings.append(f"No fast Pokémon (nobody has base Speed {FAST_SPEED}+).")
+    if not any(s["special-attack"] > s["attack"] for s in stats):
+        warnings.append("No special attackers (everyone's Attack is higher than Special Attack).")
+    if not any(s["attack"] > s["special-attack"] for s in stats):
+        warnings.append("No physical attackers (everyone's Special Attack is higher than Attack).")
+    return warnings

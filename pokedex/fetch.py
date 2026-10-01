@@ -70,3 +70,12 @@ def get_all_pokemon_names() -> list[str]:
     response = requests.get(f"{BASE_URL}/pokemon?limit=100000", timeout=20)
     response.raise_for_status()
     return sorted(item["name"] for item in response.json()["results"])
+
+def get_stats(pokemon_name: str) -> dict[str, int]:
+    """Return base stats, e.g. {'hp': 91, 'attack': 134, ..., 'speed': 80}."""
+    response = requests.get(
+        f"{BASE_URL}/pokemon/{pokemon_name.lower().strip()}",
+        timeout=20,
+    )
+    response.raise_for_status()
+    return {s["stat"]["name"]: s["base_stat"] for s in response.json()["stats"]}
