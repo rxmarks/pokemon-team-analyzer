@@ -39,6 +39,17 @@ For the default team, giving Tyranitar Close Combat (Fighting) closes the Normal
 
 Move data for all 937 moves is cached locally in `data/moves.json` (built by `scripts/build_move_cache.py`). Learnsets are fetched from PokeAPI and cached by the app.
 
+### Meta threats
+
+The app tests your team against the top 30 Pokémon in Smogon's Gen 9 OU usage stats (1695+ rating, August 2026). For each threat it shows:
+
+- How many team members are weak to its types
+- How many team members can hit it super-effectively
+
+A threat is flagged as dangerous if nobody on the team can hit it super-effectively, or if 3+ members are weak to it.
+
+Usage data is saved in `data/smogon_usage.json` (built by `scripts/build_smogon_cache.py`). To update to a newer month, change `MONTH` in the script and rerun it.
+
 ### Swap suggestions
 
 The app evaluates candidate replacements for every member of the team and ranks the best swaps.
@@ -139,6 +150,7 @@ Clone the repository:
 git clone [https://github.com/rxmarks/pokemon-team-analyzer.git](https://github.com/rxmarks/pokemon-team-analyzer.git)
 cd pokemon-team-analyzer
 ```
+Requires Python 3.14+.
 
 Create and activate a virtual environment:
 
@@ -189,3 +201,5 @@ The complete type chart is cached locally in `data/types.json`, so the app does 
 ## Future improvements
 
 - Compare teams against common competitive Pokémon usage data
+- Use each threat's common moves (from Smogon moveset data) instead of just its types
+- Let users choose the format (e.g., Gen 9 UU, VGC)
