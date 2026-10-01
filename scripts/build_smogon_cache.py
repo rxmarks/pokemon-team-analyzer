@@ -1,9 +1,17 @@
 import gzip
 import json
-
+import os
+from datetime import date
 import requests
 
-MONTH = "2026-08"
+def previous_month(today: date) -> str:
+    """Smogon publishes last month's stats early each month: Oct 2026 -> '2026-09'."""
+    if today.month == 1:
+        return f"{today.year - 1}-12"
+    return f"{today.year}-{today.month - 1:02d}"
+
+
+MONTH = os.environ.get("SMOGON_MONTH") or previous_month(date.today())
 FORMAT = "gen9ou-1695"
 TOP_N = 30
 URL = f"https://www.smogon.com/stats/{MONTH}/{FORMAT}.txt.gz"
