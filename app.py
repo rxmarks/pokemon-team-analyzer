@@ -66,7 +66,7 @@ st.write(", ".join(f"**{n}** ({' / '.join(t)})" for n, t in team.items()))
 
 st.subheader("Defense: weakness table")
 table = team_table(team, chart)
-st.dataframe(table.style.map(color_multiplier), use_container_width=True)
+st.dataframe(table.style.map(color_multiplier), width="stretch")
 st.caption("Red = weak (dark red = 4x), green = resists, blue = immune.")
 
 st.subheader("Offense: coverage gaps")
@@ -80,4 +80,4 @@ st.subheader("Swap suggestions")
 st.write(f"Current team badness: **{team_badness(team, chart)}** (problem types + coverage gaps, lower is better)")
 with st.spinner("Checking candidates..."):
     candidates = {c: cached_types(c) for c in CANDIDATES}
-st.dataframe(suggest_swaps(team, candidates, chart), use_container_width=True, hide_index=True)
+st.dataframe(suggest_swaps(team, candidates, chart), width="stretch", hide_index=True)
