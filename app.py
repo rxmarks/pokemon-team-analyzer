@@ -1,8 +1,9 @@
 import requests
 import streamlit as st
+import pandas as pd
 
-from pokedex.analysis import coverage_gaps, suggest_swaps, team_badness, team_table
-from pokedex.fetch import get_all_pokemon_names, get_types, load_type_chart
+from pokedex.analysis import coverage_gaps, stat_warnings, suggest_swaps, team_badness, team_table
+from pokedex.fetch import get_all_pokemon_names, get_stats, get_types, load_type_chart
 
 st.set_page_config(page_title="Pokémon Team Analyzer", layout="wide")
 
@@ -29,6 +30,9 @@ def cached_types(name: str) -> list[str]:
 def cached_names() -> list[str]:
     return get_all_pokemon_names()
 
+@st.cache_data
+def cached_stats(name: str) -> dict[str, int]:
+    return get_stats(name)
 
 def color_multiplier(value):
     if value >= 4:
@@ -85,6 +89,16 @@ if gaps:
     st.warning("No super-effective coverage against: " + ", ".join(sorted(gaps)))
 else:
     st.success("Your team's types hit every type super-effectively.")
+
+st.subheader("Stats: role check")
+team_stats = {n: cached_stats(n) for n in team}
+st.dataframe(pd.DataFrame(team_stats).T, width="stretch")
+warnings = stat_warnings(team_stats)
+if warnings:
+    for w in warnings:
+        st.warning(w)
+else:
+    st.success("Team has speed, physical, and special attackers covered.")
 
 st.subheader("Swap suggestions")
 st.write(f"Current team badness: **{team_badness(team, chart)}** (problem types + coverage gaps, lower is better)")
