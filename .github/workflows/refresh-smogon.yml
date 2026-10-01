@@ -1,0 +1,38 @@
+name: refresh-smogon
+
+on:
+  schedule:
+    - cron: "0 12 3 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download latest Smogon usage
+        run: python -m scripts.build_smogon_cache
+
+      - name: Open pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: bot/smogon-refresh
+          commit-message: "Refresh Smogon usage data"
+          title: "Refresh Smogon usage data"
+          body: "Automated monthly update of `data/smogon_usage.json`."
+          delete-branch: true
