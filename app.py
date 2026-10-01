@@ -1,8 +1,7 @@
 import pandas as pd
 import requests
 import streamlit as st
-from pokedex.move_ui import render_move_coverage
-from pokedex.threat_ui import render_meta_threats
+
 from pokedex.analysis import (
     coverage_gaps,
     stat_warnings,
@@ -17,6 +16,8 @@ from pokedex.fetch import (
     load_pokemon_cache,
     load_type_chart,
 )
+from pokedex.move_ui import render_move_coverage
+from pokedex.threat_ui import render_meta_threats
 
 st.set_page_config(page_title="Pokémon Team Analyzer", layout="wide")
 
@@ -96,10 +97,8 @@ st.write(", ".join(f"**{n}** ({' / '.join(t)})" for n, t in team.items()))
 st.subheader("Defense: weakness table")
 table = team_table(team, chart)
 member_cols = list(team)
-styled = (
-    table.style
-    .map(color_multiplier, subset=member_cols)
-    .format("{:g}", subset=member_cols + ["total"])
+styled = table.style.map(color_multiplier, subset=member_cols).format(
+    "{:g}", subset=member_cols + ["total"]
 )
 st.dataframe(styled, width="stretch")
 st.caption("Red = weak (dark red = 4x), green = resists, blue = immune.")

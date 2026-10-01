@@ -26,7 +26,8 @@ def render_move_coverage(team: dict[str, list[str]], type_chart: dict) -> None:
     team_moves = {}
     for name in team:
         damaging = [
-            m for m in cached_learnable_moves(name)
+            m
+            for m in cached_learnable_moves(name)
             if move_cache.get(m, {}).get("damage_class") not in (None, "status")
         ]
         team_moves[name] = st.multiselect(
@@ -43,7 +44,9 @@ def render_move_coverage(team: dict[str, list[str]], type_chart: dict) -> None:
 
     gaps = move_coverage_gaps(team_moves, move_cache, type_chart)
     if gaps:
-        st.warning("Your moves can't hit these types super-effectively: "
-                   + ", ".join(sorted(t.title() for t in gaps)))
+        st.warning(
+            "Your moves can't hit these types super-effectively: "
+            + ", ".join(sorted(t.title() for t in gaps))
+        )
     else:
         st.success("Your moves hit every type super-effectively.")

@@ -19,7 +19,10 @@ def render_meta_threats(team: dict[str, list[str]], type_chart: dict) -> None:
     usage = cached_usage()
     cache = cached_pokemon()
     st.subheader("Meta threats")
-    st.caption(f"Top {len(usage['top'])} Pokémon in {usage['format']} ({usage['month']}), from Smogon usage stats.")
+    st.caption(
+        f"Top {len(usage['top'])} Pokémon in {usage['format']} ({usage['month']}), "
+        "from Smogon usage stats."
+    )
 
     threats = {r["name"]: cache[r["name"]]["types"] for r in usage["top"] if r["name"] in cache}
     report = threat_report(team, threats, type_chart)

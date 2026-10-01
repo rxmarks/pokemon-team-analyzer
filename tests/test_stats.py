@@ -3,8 +3,12 @@ from pokedex.analysis import stat_warnings
 
 def make_stats(attack=100, special_attack=100, speed=80):
     return {
-        "hp": 80, "attack": attack, "defense": 80,
-        "special-attack": special_attack, "special-defense": 80, "speed": speed,
+        "hp": 80,
+        "attack": attack,
+        "defense": 80,
+        "special-attack": special_attack,
+        "special-defense": 80,
+        "speed": speed,
     }
 
 
