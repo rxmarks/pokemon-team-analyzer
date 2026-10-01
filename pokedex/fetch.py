@@ -105,3 +105,11 @@ def get_learnable_moves(pokemon_name: str) -> list[str]:
     )
     response.raise_for_status()
     return sorted(m["move"]["name"] for m in response.json()["moves"])
+
+SMOGON_PATH = Path(__file__).resolve().parent.parent / "data" / "smogon_usage.json"
+
+
+def load_smogon_usage() -> dict:
+    """Saved Smogon top-30 usage: month, format, and ranked list."""
+    with SMOGON_PATH.open(encoding="utf-8") as f:
+        return json.load(f)

@@ -2,6 +2,7 @@ import pandas as pd
 import requests
 import streamlit as st
 from pokedex.move_ui import render_move_coverage
+from pokedex.threat_ui import render_meta_threats
 from pokedex.analysis import (
     coverage_gaps,
     stat_warnings,
@@ -111,6 +112,7 @@ else:
     st.success("Your team's types hit every type super-effectively.")
 
 render_move_coverage(team, chart)
+render_meta_threats(team, chart)
 
 st.subheader("Stats: role check")
 team_stats = {n: cached_stats(n) for n in team}
