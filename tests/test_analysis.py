@@ -2,11 +2,16 @@ import pytest
 
 from pokedex.analysis import (
     coverage_gaps,
+    member_coverage,
+    member_profile,
     multiplier,
+    score_team,
     suggest_swaps,
     team_badness,
     team_table,
+    team_weak_total,
 )
+
 from pokedex.fetch import load_type_chart
 
 SAMPLE_TEAM = {
@@ -85,3 +90,12 @@ def test_swaps_skip_existing_members(chart):
     candidates = {"dragonite": ["dragon", "flying"], "scizor": ["bug", "steel"]}
     result = suggest_swaps(SAMPLE_TEAM, candidates, chart)
     assert "dragonite" not in set(result["candidate"])
+
+
+def test_fast_score_matches_pandas_version(chart):
+    profiles = [member_profile(t, chart) for t in SAMPLE_TEAM.values()]
+    coverages = [member_coverage(t, chart) for t in SAMPLE_TEAM.values()]
+    assert score_team(profiles, coverages, list(chart)) == (
+        team_badness(SAMPLE_TEAM, chart),
+        team_weak_total(SAMPLE_TEAM, chart),
+    )
