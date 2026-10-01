@@ -8,14 +8,18 @@ FORMAT = "gen9ou-1695"
 TOP_N = 30
 URL = f"https://www.smogon.com/stats/{MONTH}/{FORMAT}.txt.gz"
 OUT_PATH = "data/smogon_usage.json"
-
+NAME_FIXES = {
+    "ogerpon-wellspring": "ogerpon-wellspring-mask",
+    "ogerpon-hearthflame": "ogerpon-hearthflame-mask",
+    "ogerpon-cornerstone": "ogerpon-cornerstone-mask",
+}
 
 def to_pokeapi_name(smogon_name: str) -> str:
     """'Great Tusk' -> 'great-tusk', 'Mr. Mime' -> 'mr-mime'."""
     name = smogon_name.lower().replace(" ", "-")
     for ch in ".':%":
         name = name.replace(ch, "")
-    return name
+    return NAME_FIXES.get(name, name)
 
 
 def parse_usage(text: str, top_n: int) -> list[dict]:

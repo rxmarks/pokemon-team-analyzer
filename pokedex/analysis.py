@@ -172,3 +172,27 @@ def move_coverage_gaps(
     for moves in team_moves.values():
         attack_types |= damaging_move_types(moves, move_cache)
     return gaps_from_attack_types(attack_types, type_chart)
+
+def threat_report(
+    team: dict[str, list[str]],
+    threats: dict[str, list[str]],
+    type_chart: dict,
+) -> list[dict]:
+    """For each threat: how many members are weak to its types, and how many can hit it super-effectively."""
+    report = []
+    for threat, threat_types in threats.items():
+        weak = sum(
+            1 for member_types in team.values()
+            if max(multiplier(t, member_types, type_chart) for t in threat_types) > 1
+        )
+        answers = sum(
+            1 for member_types in team.values()
+            if max(multiplier(t, threat_types, type_chart) for t in member_types) > 1
+        )
+        report.append({
+            "threat": threat,
+            "members_weak": weak,
+            "answers": answers,
+            "danger": answers == 0 or weak >= 3,
+        })
+    return report
