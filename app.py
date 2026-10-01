@@ -1,21 +1,10 @@
-import pandas as pd
 import requests
 import streamlit as st
 
 from pokedex.analysis import coverage_gaps, suggest_swaps, team_badness, team_table
-from pokedex.fetch import get_types, load_type_chart, get_all_pokemon_names
+from pokedex.fetch import get_all_pokemon_names, get_types, load_type_chart
 
-@st.cache_data
-def cached_chart() -> dict:
-    return load_type_chart()
-
-@st.cache_data
-def cached_types(name: str) -> list[str]:
-    return get_types(name)
-
-@st.cache_data
-def cached_names() -> list[str]:
-    return get_all_pokemon_names()
+st.set_page_config(page_title="Pokémon Team Analyzer", layout="wide")
 
 CANDIDATES = [
     "lucario", "metagross", "scizor", "heatran", "magnezone",
@@ -23,14 +12,38 @@ CANDIDATES = [
     "blissey", "skarmory", "corviknight", "breloom", "infernape",
     "weavile", "gengar", "volcarona", "hydreigon", "rotom-wash",
 ]
-DEFAULT_TEAM = [
-    "dragonite",
-    "gyarados",
-    "garchomp",
-    "ferrothorn",
-    "togekiss",
-    "tyranitar",
-]
+DEFAULT_TEAM = ["dragonite", "gyarados", "garchomp", "ferrothorn", "togekiss", "tyranitar"]
+
+
+@st.cache_data
+def cached_chart() -> dict:
+    return load_type_chart()
+
+
+@st.cache_data
+def cached_types(name: str) -> list[str]:
+    return get_types(name)
+
+
+@st.cache_data
+def cached_names() -> list[str]:
+    return get_all_pokemon_names()
+
+
+def color_multiplier(value):
+    if value >= 4:
+        return "background-color: #b91c1c; color: white"
+    if value >= 2:
+        return "background-color: #f87171"
+    if value == 0:
+        return "background-color: #60a5fa"
+    if value < 1:
+        return "background-color: #86efac"
+    return ""
+
+
+st.title("Pokémon Team Analyzer")
+st.caption("Type-coverage analysis and swap suggestions. Data from PokeAPI.")
 
 names = st.multiselect(
     "Pick up to 6 Pokémon (type to search)",
@@ -43,39 +56,13 @@ if not names:
     st.info("Pick at least one Pokémon to start.")
     st.stop()
 
-
-def color_multiplier(value):
-    if not isinstance(value, float):
-        return ""
-    if value >= 4:
-        return "background-color: #b91c1c; color: white"
-    if value >= 2:
-        return "background-color: #f87171"
-    if value == 0:
-        return "background-color: #60a5fa"
-    if value < 1:
-        return "background-color: #86efac"
-    return ""
-
-
-st.set_page_config(page_title="Pokémon Team Analyzer", layout="wide")
-st.title("Pokémon Team Analyzer")
-st.caption("Type-coverage analysis and swap suggestions. Data from PokeAPI.")
-
-raw = st.text_input("Enter up to 6 Pokémon, separated by commas", DEFAULT_TEAM)
-names = [n.strip().lower().replace(" ", "-") for n in raw.split(",") if n.strip()]
-
-if not names:
-    st.info("Enter at least one Pokémon to start.")
-    st.stop()
-
 chart = cached_chart()
 team = {}
 for name in names:
     try:
         team[name] = cached_types(name)
     except requests.HTTPError:
-        st.error(f"Couldn't find '{name}'. Check the spelling (forms use dashes, e.g. rotom-wash).")
+        st.error(f"Couldn't load '{name}' from PokeAPI. Try again in a moment.")
         st.stop()
 
 st.subheader("Team")
