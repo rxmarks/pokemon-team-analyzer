@@ -1,5 +1,6 @@
-import streamlit as st
 import requests
+import streamlit as st
+
 from pokedex.analysis import move_coverage_gaps
 from pokedex.fetch import get_learnable_moves, load_move_cache
 
@@ -31,10 +32,11 @@ def render_move_coverage(team: dict[str, list[str]], type_chart: dict) -> None:
             st.warning(f"Couldn't load moves for {pretty(name)} from PokeAPI. Try again later.")
             continue
         damaging = [
-            m for m in learnable
+            m
+            for m in learnable
             if move_cache.get(m, {}).get("damage_class") not in (None, "status")
         ]
-        
+
         team_moves[name] = st.multiselect(
             pretty(name),
             options=damaging,
