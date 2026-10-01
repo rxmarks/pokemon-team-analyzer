@@ -87,3 +87,21 @@ def load_pokemon_cache() -> dict:
     """Locally saved types + stats for every Pokémon (built by scripts/build_pokemon_cache.py)."""
     with POKEMON_CACHE_PATH.open(encoding="utf-8") as f:
         return json.load(f)
+
+MOVES_CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "moves.json"
+
+
+def load_move_cache() -> dict:
+    """Locally saved type/damage_class/power for every move."""
+    with MOVES_CACHE_PATH.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+def get_learnable_moves(pokemon_name: str) -> list[str]:
+    """Every move this Pokémon can learn, sorted."""
+    response = requests.get(
+        f"{BASE_URL}/pokemon/{pokemon_name.lower().strip()}",
+        timeout=20,
+    )
+    response.raise_for_status()
+    return sorted(m["move"]["name"] for m in response.json()["moves"])
