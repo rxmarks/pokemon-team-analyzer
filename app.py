@@ -87,7 +87,7 @@ team = {}
 for name in names:
     try:
         team[name] = cached_types(name)
-    except requests.HTTPError:
+    except requests.RequestException:
         st.error(f"Couldn't load '{name}' from PokeAPI. Try again in a moment.")
         st.stop()
 
