@@ -36,7 +36,7 @@ For the default sample team, Normal is the only coverage gap because none of its
 The app evaluates candidate replacements for every member of the team and ranks the best swaps.
 
 Each candidate is tested in all six team slots. The app searches every Pokémon with a base stat
-total of 500+ (N candidates), checking about 6 × N possible replacement teams.
+total of 500+ (487 candidates), checking about 6 × N possible replacement teams.
 
 
 The ranking uses:
@@ -44,7 +44,7 @@ The ranking uses:
 1. **Team badness** — Number of problem attack types plus offensive coverage gaps
 2. **Weakness total** — Used as a tiebreaker; fewer total type weaknesses ranks higher
 
-For the default team, replacing Dragonite with Scizor lowers the badness score from 4 to 2 and produces the lowest total number of weaknesses among the top-ranked candidates.
+For the default team, replacing Dragonite with any Bug/Steel Pokémon (such as Scizor, Durant, or Genesect) lowers the badness score from 4 to 2 while adding only one new weakness, the lowest of any candidate.
 
 ## Performance
 
