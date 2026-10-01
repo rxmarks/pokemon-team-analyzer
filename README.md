@@ -31,6 +31,14 @@ The app checks which defending types the team cannot hit super-effectively using
 
 For the default sample team, Normal is the only coverage gap because none of its types are Fighting-type.
 
+### Move-based coverage
+
+Type-based coverage only checks each Pokémon's own types. In real battles, coverage comes from moves. The app lets you pick up to 4 moves per Pokémon from its actual learnset, then checks which types those moves can't hit super-effectively. Status moves (like Swords Dance) are hidden because they deal no damage.
+
+For the default team, giving Tyranitar Close Combat (Fighting) closes the Normal gap that type-based coverage can't fix.
+
+Move data for all 937 moves is cached locally in `data/moves.json` (built by `scripts/build_move_cache.py`). Learnsets are fetched from PokeAPI and cached by the app.
+
 ### Swap suggestions
 
 The app evaluates candidate replacements for every member of the team and ranks the best swaps.
@@ -180,5 +188,4 @@ The complete type chart is cached locally in `data/types.json`, so the app does 
 
 ## Future improvements
 
-- Use actual move types rather than Pokémon types for offensive coverage
 - Compare teams against common competitive Pokémon usage data
