@@ -33,4 +33,4 @@ jobs:
       - name: Run tests
         run: |
           pip install pytest-cov
-          python -m pytest --cov=pokedex --cov-report=term-missing
+          python -m pytest --cov=pokedex --cov-report=term-missing --cov-fail-under=90
