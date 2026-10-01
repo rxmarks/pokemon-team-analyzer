@@ -1,186 +1,186 @@
 {
-  "month": "2026-08",
+  "month": "2026-09",
   "format": "gen9ou-1695",
   "top": [
     {
       "rank": 1,
       "smogon_name": "Great Tusk",
       "name": "great-tusk",
-      "usage": 33.92137
+      "usage": 33.146
     },
     {
       "rank": 2,
       "smogon_name": "Kingambit",
       "name": "kingambit",
-      "usage": 28.48102
+      "usage": 30.65542
     },
     {
       "rank": 3,
       "smogon_name": "Gholdengo",
       "name": "gholdengo",
-      "usage": 28.37898
+      "usage": 25.88588
     },
     {
       "rank": 4,
-      "smogon_name": "Zamazenta",
-      "name": "zamazenta",
-      "usage": 22.8597
+      "smogon_name": "Ogerpon-Wellspring",
+      "name": "ogerpon-wellspring-mask",
+      "usage": 20.35784
     },
     {
       "rank": 5,
-      "smogon_name": "Ogerpon-Wellspring",
-      "name": "ogerpon-wellspring-mask",
-      "usage": 21.1902
+      "smogon_name": "Zamazenta",
+      "name": "zamazenta",
+      "usage": 19.47242
     },
     {
       "rank": 6,
       "smogon_name": "Dragonite",
       "name": "dragonite",
-      "usage": 21.13554
+      "usage": 18.2408
     },
     {
       "rank": 7,
-      "smogon_name": "Raging Bolt",
-      "name": "raging-bolt",
-      "usage": 18.311
+      "smogon_name": "Iron Valiant",
+      "name": "iron-valiant",
+      "usage": 18.1374
     },
     {
       "rank": 8,
-      "smogon_name": "Kyurem",
-      "name": "kyurem",
-      "usage": 17.7363
+      "smogon_name": "Raging Bolt",
+      "name": "raging-bolt",
+      "usage": 17.69534
     },
     {
       "rank": 9,
-      "smogon_name": "Iron Valiant",
-      "name": "iron-valiant",
-      "usage": 16.59982
+      "smogon_name": "Kyurem",
+      "name": "kyurem",
+      "usage": 17.00711
     },
     {
       "rank": 10,
-      "smogon_name": "Samurott-Hisui",
-      "name": "samurott-hisui",
-      "usage": 15.79039
+      "smogon_name": "Slowking-Galar",
+      "name": "slowking-galar",
+      "usage": 15.76289
     },
     {
       "rank": 11,
-      "smogon_name": "Slowking-Galar",
-      "name": "slowking-galar",
-      "usage": 14.29968
+      "smogon_name": "Glimmora",
+      "name": "glimmora",
+      "usage": 15.10744
     },
     {
       "rank": 12,
-      "smogon_name": "Glimmora",
-      "name": "glimmora",
-      "usage": 13.79091
+      "smogon_name": "Cinderace",
+      "name": "cinderace",
+      "usage": 14.77057
     },
     {
       "rank": 13,
-      "smogon_name": "Cinderace",
-      "name": "cinderace",
-      "usage": 13.54336
+      "smogon_name": "Landorus-Therian",
+      "name": "landorus-therian",
+      "usage": 13.3544
     },
     {
       "rank": 14,
-      "smogon_name": "Landorus-Therian",
-      "name": "landorus-therian",
-      "usage": 12.90442
+      "smogon_name": "Samurott-Hisui",
+      "name": "samurott-hisui",
+      "usage": 13.15058
     },
     {
       "rank": 15,
-      "smogon_name": "Gliscor",
-      "name": "gliscor",
-      "usage": 12.16213
+      "smogon_name": "Hatterene",
+      "name": "hatterene",
+      "usage": 12.10369
     },
     {
       "rank": 16,
-      "smogon_name": "Ting-Lu",
-      "name": "ting-lu",
-      "usage": 12.0087
+      "smogon_name": "Gliscor",
+      "name": "gliscor",
+      "usage": 11.54687
     },
     {
       "rank": 17,
-      "smogon_name": "Hatterene",
-      "name": "hatterene",
-      "usage": 11.64299
+      "smogon_name": "Iron Treads",
+      "name": "iron-treads",
+      "usage": 10.84391
     },
     {
       "rank": 18,
-      "smogon_name": "Iron Treads",
-      "name": "iron-treads",
-      "usage": 11.33754
+      "smogon_name": "Dragapult",
+      "name": "dragapult",
+      "usage": 10.37021
     },
     {
       "rank": 19,
-      "smogon_name": "Dragapult",
-      "name": "dragapult",
-      "usage": 10.41035
+      "smogon_name": "Corviknight",
+      "name": "corviknight",
+      "usage": 10.22131
     },
     {
       "rank": 20,
-      "smogon_name": "Iron Moth",
-      "name": "iron-moth",
-      "usage": 10.36496
+      "smogon_name": "Rillaboom",
+      "name": "rillaboom",
+      "usage": 9.6914
     },
     {
       "rank": 21,
-      "smogon_name": "Cresselia",
-      "name": "cresselia",
-      "usage": 10.07138
+      "smogon_name": "Darkrai",
+      "name": "darkrai",
+      "usage": 9.23794
     },
     {
       "rank": 22,
-      "smogon_name": "Darkrai",
-      "name": "darkrai",
-      "usage": 9.99881
+      "smogon_name": "Ting-Lu",
+      "name": "ting-lu",
+      "usage": 9.15065
     },
     {
       "rank": 23,
-      "smogon_name": "Corviknight",
-      "name": "corviknight",
-      "usage": 9.75833
+      "smogon_name": "Pecharunt",
+      "name": "pecharunt",
+      "usage": 9.09778
     },
     {
       "rank": 24,
-      "smogon_name": "Ceruledge",
-      "name": "ceruledge",
-      "usage": 9.21607
+      "smogon_name": "Alomomola",
+      "name": "alomomola",
+      "usage": 8.88864
     },
     {
       "rank": 25,
-      "smogon_name": "Pecharunt",
-      "name": "pecharunt",
-      "usage": 9.10149
+      "smogon_name": "Iron Moth",
+      "name": "iron-moth",
+      "usage": 8.78654
     },
     {
       "rank": 26,
-      "smogon_name": "Alomomola",
-      "name": "alomomola",
-      "usage": 7.73419
+      "smogon_name": "Ceruledge",
+      "name": "ceruledge",
+      "usage": 7.98261
     },
     {
       "rank": 27,
-      "smogon_name": "Moltres",
-      "name": "moltres",
-      "usage": 7.7219
+      "smogon_name": "Cresselia",
+      "name": "cresselia",
+      "usage": 7.81648
     },
     {
       "rank": 28,
-      "smogon_name": "Walking Wake",
-      "name": "walking-wake",
-      "usage": 7.68355
+      "smogon_name": "Clefable",
+      "name": "clefable",
+      "usage": 7.26364
     },
     {
       "rank": 29,
       "smogon_name": "Ogerpon",
       "name": "ogerpon",
-      "usage": 6.74609
+      "usage": 6.31955
     },
     {
       "rank": 30,
-      "smogon_name": "Clefable",
-      "name": "clefable",
-      "usage": 6.15645
+      "smogon_name": "Deoxys-Speed",
+      "name": "deoxys-speed",
+      "usage": 6.04933
     }
   ]
 }
