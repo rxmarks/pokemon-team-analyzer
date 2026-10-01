@@ -1,3 +1,5 @@
+[![tests](https://github.com/rxmarks/pokemon-team-analyzer/actions/workflows/tests.yml/badge.svg)](https://github.com/rxmarks/pokemon-team-analyzer/actions/workflows/tests.yml)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://pokemon-team-analyzer.streamlit.app/)
 # Pokémon Team Analyzer
 
 A deployed Python web app that analyzes a Pokémon team’s defensive type weaknesses, offensive type coverage, and potential swap improvements.
