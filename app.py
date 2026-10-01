@@ -136,3 +136,23 @@ if not candidates:
 
 st.caption(f"Searching {len(candidates)} Pokémon with base stat total {MIN_BST}+.")
 st.dataframe(suggest_swaps(team, candidates, chart), width="stretch", hide_index=True)
+
+with st.sidebar:
+    st.header("About")
+    st.markdown(
+        "Analyzes a Pokémon team's type matchups using PokeAPI data.\n\n"
+        "- **Defense:** damage multipliers per attack type\n"
+        "- **Offense:** types your team can't hit super-effectively\n"
+        "- **Suggestions:** swaps that fix the most weaknesses\n\n"
+        "[GitHub repo](https://github.com/rxmarks/pokemon-team-analyzer)"
+    )
+
+with st.spinner("Fetching Pokémon data..."):
+    team_types = {name: get_types(name) for name in names}
+
+with st.expander("How to read this table"):
+    st.markdown(
+        "Each cell is the damage multiplier that attack type deals to that Pokémon. "
+        "4 and 2 mean weak, 0.5 and 0.25 mean resists, 0 means immune. "
+        "'# weak' counts members taking 2x or more."
+    )
