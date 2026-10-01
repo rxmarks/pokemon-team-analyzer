@@ -146,3 +146,13 @@ def stat_warnings(team_stats: dict[str, dict[str, int]]) -> list[str]:
     if not any(s["attack"] > s["special-attack"] for s in stats):
         warnings.append("No physical attackers (everyone's Special Attack is higher than Attack).")
     return warnings
+
+def damaging_move_types(moves: list[str], move_cache: dict) -> set[str]:
+    """Types of the damaging moves in the list; status and unknown moves are skipped."""
+    types = set()
+    for name in moves:
+        info = move_cache.get(name)
+        if info is None or info["damage_class"] == "status":
+            continue
+        types.add(info["type"])
+    return types
