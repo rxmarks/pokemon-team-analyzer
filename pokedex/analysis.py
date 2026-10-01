@@ -35,13 +35,18 @@ def team_table(team: dict[str, list[str]], type_chart: dict) -> pd.DataFrame:
     )
 
 
+def gaps_from_attack_types(attack_types: set[str], type_chart: dict) -> set[str]:
+    """Types that none of the given attack types hit super-effectively."""
+    covered = set()
+    for attacking_type in attack_types:
+        covered |= set(type_chart[attacking_type]["double_damage_to"])
+    return set(type_chart) - covered
+
+
 def coverage_gaps(team: dict[str, list[str]], type_chart: dict) -> set[str]:
     """Types the team's own types can't hit super-effectively."""
     team_types = {t for types in team.values() for t in types}
-    covered = set()
-    for attacking_type in team_types:
-        covered |= set(type_chart[attacking_type]["double_damage_to"])
-    return set(type_chart) - covered
+    return gaps_from_attack_types(team_types, type_chart)
 
 
 def team_badness(team: dict[str, list[str]], type_chart: dict) -> int:
@@ -146,3 +151,24 @@ def stat_warnings(team_stats: dict[str, dict[str, int]]) -> list[str]:
     if not any(s["attack"] > s["special-attack"] for s in stats):
         warnings.append("No physical attackers (everyone's Special Attack is higher than Attack).")
     return warnings
+
+def damaging_move_types(moves: list[str], move_cache: dict) -> set[str]:
+    """Types of the damaging moves in the list; status and unknown moves are skipped."""
+    types = set()
+    for name in moves:
+        info = move_cache.get(name)
+        if info is None or info["damage_class"] == "status":
+            continue
+        types.add(info["type"])
+    return types
+
+def move_coverage_gaps(
+    team_moves: dict[str, list[str]],
+    move_cache: dict,
+    type_chart: dict,
+) -> set[str]:
+    """Types the team's damaging moves can't hit super-effectively."""
+    attack_types = set()
+    for moves in team_moves.values():
+        attack_types |= damaging_move_types(moves, move_cache)
+    return gaps_from_attack_types(attack_types, type_chart)
