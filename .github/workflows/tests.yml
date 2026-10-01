@@ -31,4 +31,6 @@ jobs:
           ruff format --check .
           
       - name: Run tests
-        run: python -m pytest -v
+        run: |
+          pip install pytest-cov
+          python -m pytest --cov=pokedex --cov-report=term-missing
