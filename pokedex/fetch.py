@@ -66,7 +66,7 @@ def get_types(pokemon_name: str) -> list[str]:
     return [entry["type"]["name"] for entry in type_entries]
 
 def get_all_pokemon_names() -> list[str]:
-    """Every Pokémon name PokeAPI knows, including forms like rotom-wash."""
+    """Return every Pokémon name PokeAPI knows, including forms."""
     response = requests.get(f"{BASE_URL}/pokemon?limit=100000", timeout=20)
     response.raise_for_status()
-    return sorted(p["name"] for p in response.json()["results"])
+    return sorted(item["name"] for item in response.json()["results"])
