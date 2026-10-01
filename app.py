@@ -3,7 +3,12 @@ import requests
 import streamlit as st
 
 from pokedex.analysis import coverage_gaps, suggest_swaps, team_badness, team_table
-from pokedex.fetch import get_types, load_type_chart
+from pokedex.fetch import get_all_pokemon_names, get_types, load_type_chart
+
+
+@st.cache_data
+def cached_names() -> list[str]:
+    return get_all_pokemon_names()
 
 CANDIDATES = [
     "lucario", "metagross", "scizor", "heatran", "magnezone",
@@ -11,7 +16,7 @@ CANDIDATES = [
     "blissey", "skarmory", "corviknight", "breloom", "infernape",
     "weavile", "gengar", "volcarona", "hydreigon", "rotom-wash",
 ]
-DEFAULT_TEAM = "dragonite, gyarados, garchomp, ferrothorn, togekiss, tyranitar"
+DEFAULT_TEAM = ["dragonite", "gyarados", "garchomp", "ferrothorn", "togekiss", "tyranitar"]
 
 
 @st.cache_data
@@ -37,19 +42,15 @@ def color_multiplier(value):
         return "background-color: #86efac"
     return ""
 
-
-st.set_page_config(page_title="Pokémon Team Analyzer", layout="wide")
-st.title("Pokémon Team Analyzer")
-st.caption("Type-coverage analysis and swap suggestions. Data from PokeAPI.")
-
-raw = st.text_input("Enter up to 6 Pokémon, separated by commas", DEFAULT_TEAM)
-names = [n.strip().lower().replace(" ", "-") for n in raw.split(",") if n.strip()]
+names = st.multiselect(
+    "Pick up to 6 Pokémon (type to search)",
+    options=cached_names(),
+    default=DEFAULT_TEAM,
+    max_selections=6,
+)
 
 if not names:
-    st.info("Enter at least one Pokémon to start.")
-    st.stop()
-if len(names) > 6:
-    st.error("A team can have at most 6 Pokémon.")
+    st.info("Pick at least one Pokémon to start.")
     st.stop()
 
 chart = cached_chart()
