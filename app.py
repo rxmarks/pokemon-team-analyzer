@@ -66,7 +66,13 @@ st.write(", ".join(f"**{n}** ({' / '.join(t)})" for n, t in team.items()))
 
 st.subheader("Defense: weakness table")
 table = team_table(team, chart)
-st.dataframe(table.style.map(color_multiplier), width="stretch")
+member_cols = list(team)
+styled = (
+    table.style
+    .map(color_multiplier, subset=member_cols)
+    .format("{:g}", subset=member_cols + ["total"])
+)
+st.dataframe(styled, width="stretch")
 st.caption("Red = weak (dark red = 4x), green = resists, blue = immune.")
 
 st.subheader("Offense: coverage gaps")
