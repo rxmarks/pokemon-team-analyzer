@@ -79,3 +79,11 @@ def get_stats(pokemon_name: str) -> dict[str, int]:
     )
     response.raise_for_status()
     return {s["stat"]["name"]: s["base_stat"] for s in response.json()["stats"]}
+
+POKEMON_CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "pokemon.json"
+
+
+def load_pokemon_cache() -> dict:
+    """Locally saved types + stats for every Pokémon (built by scripts/build_pokemon_cache.py)."""
+    with POKEMON_CACHE_PATH.open(encoding="utf-8") as f:
+        return json.load(f)
