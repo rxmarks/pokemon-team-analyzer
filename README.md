@@ -10,7 +10,7 @@ A deployed Python web app that analyzes a Pokémon team’s defensive type weakn
 
 ## What it does
 
-Enter up to six Pokémon names to analyze a team across the full 18-type Pokémon chart.
+Search for and select up to six Pokémon to analyze a team across the full 18-type Pokémon chart.
 
 ### Defensive weakness table
 
@@ -43,6 +43,24 @@ The ranking uses:
 2. **Weakness total** — Used as a tiebreaker; fewer total type weaknesses ranks higher
 
 For the default team, replacing Dragonite with Scizor lowers the badness score from 4 to 2 and produces the lowest total number of weaknesses among the top-ranked candidates.
+
+## Performance
+
+Searching the full Pokémon pool originally took about 15 seconds, because every candidate
+team rebuilt two pandas tables from scratch.
+
+I rewrote the scoring to compute each Pokémon's 18 type multipliers once and reuse them,
+using plain Python counting instead of building DataFrames. The same search now runs in about 5 seconds
+(roughly 3x faster). The existing pytest suite and a new equivalence test confirm the
+faster version returns identical rankings.
+
+### Stat role check
+
+The app pulls each team member's base stats and flags missing roles:
+
+- No fast Pokémon (no member with base Speed 100+)
+- No special attackers (every member's Attack is higher than its Special Attack)
+- No physical attackers (every member's Special Attack is higher than its Attack)
 
 ## Example team
 
@@ -134,6 +152,8 @@ The project includes pytest tests for:
 - Offensive coverage-gap logic
 - Team badness scoring
 - Swap-ranking behavior
+- Stat role-check logic, including the Speed 100 boundary
+- API fetch logic, tested with a mocked response
 
 GitHub Actions runs the pytest suite automatically on every push to `main`.
 
@@ -145,8 +165,5 @@ The complete type chart is cached locally in `data/types.json`, so the app does 
 
 ## Future improvements
 
-- Let users choose from a searchable Pokémon list instead of typing names
 - Use actual move types rather than Pokémon types for offensive coverage
-- Add base-stat checks, such as team speed and physical/special balance
-- Expand the candidate pool beyond the current 20 Pokémon
 - Compare teams against common competitive Pokémon usage data
