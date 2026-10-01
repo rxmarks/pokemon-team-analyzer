@@ -2,7 +2,9 @@ import gzip
 import json
 import os
 from datetime import date
+
 import requests
+
 
 def previous_month(today: date) -> str:
     """Smogon publishes last month's stats early each month: Oct 2026 -> '2026-09'."""

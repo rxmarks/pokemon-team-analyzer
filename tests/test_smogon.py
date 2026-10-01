@@ -24,6 +24,4 @@ def test_parse_usage_skips_headers():
         " | 2    | Kingambit  | 28.4% |\n"
     )
     rows = parse_usage(text, top_n=1)
-    assert rows == [
-        {"rank": 1, "smogon_name": "Great Tusk", "name": "great-tusk", "usage": 33.9}
-    ]
+    assert rows == [{"rank": 1, "smogon_name": "Great Tusk", "name": "great-tusk", "usage": 33.9}]
