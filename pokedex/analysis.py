@@ -14,6 +14,7 @@ def multiplier(attack_type: str, defender_types: list[str], type_chart: dict) ->
             result *= 0.5
     return result
 
+
 def team_table(team: dict[str, list[str]], type_chart: dict) -> pd.DataFrame:
     """Rows = attack types, columns = team members, plus weak/resist counts."""
     rows = {}
@@ -33,6 +34,7 @@ def team_table(team: dict[str, list[str]], type_chart: dict) -> pd.DataFrame:
         ascending=[False, True, False],
     )
 
+
 def coverage_gaps(team: dict[str, list[str]], type_chart: dict) -> set[str]:
     """Types the team's own types can't hit super-effectively."""
     team_types = {t for types in team.values() for t in types}
@@ -41,15 +43,48 @@ def coverage_gaps(team: dict[str, list[str]], type_chart: dict) -> set[str]:
         covered |= set(type_chart[attacking_type]["double_damage_to"])
     return set(type_chart) - covered
 
+
 def team_badness(team: dict[str, list[str]], type_chart: dict) -> int:
     """Problem types (more weak than resist) + offensive coverage gaps. Lower is better."""
     table = team_table(team, type_chart)
     problem_types = int((table["# weak"] > table["# resist"]).sum())
     return problem_types + len(coverage_gaps(team, type_chart))
 
+
 def team_weak_total(team: dict[str, list[str]], type_chart: dict) -> int:
     """Total number of (attack type, member) pairs where the member is weak. Tiebreaker."""
     return int(team_table(team, type_chart)["# weak"].sum())
+
+
+def member_profile(types: list[str], type_chart: dict) -> dict[str, float]:
+    """One Pokémon's multiplier against each of the 18 attack types."""
+    return {attack: multiplier(attack, types, type_chart) for attack in type_chart}
+
+
+def member_coverage(types: list[str], type_chart: dict) -> set[str]:
+    """Types this Pokémon's own types hit super-effectively."""
+    covered = set()
+    for t in types:
+        covered |= set(type_chart[t]["double_damage_to"])
+    return covered
+
+
+def score_team(profiles: list[dict], coverages: list[set], all_types: list[str]) -> tuple[int, int]:
+    """(badness, weak_total) using precomputed profiles. Same math as team_badness, no pandas."""
+    problems = 0
+    weak_total = 0
+    for attack in all_types:
+        weak = sum(1 for p in profiles if p[attack] > 1)
+        resist = sum(1 for p in profiles if p[attack] < 1)
+        weak_total += weak
+        if weak > resist:
+            problems += 1
+    gaps = len(set(all_types) - set().union(*coverages))
+    return problems + gaps, weak_total
+
+
+SWAP_COLUMNS = ["candidate", "replaces", "new_badness", "weak_total", "improvement"]
+
 
 def suggest_swaps(
     team: dict[str, list[str]],
@@ -58,17 +93,25 @@ def suggest_swaps(
     top_n: int = 5,
 ) -> pd.DataFrame:
     """For each candidate, find the best member to replace and rank by improvement."""
-    base = team_badness(team, type_chart)
-    results = []
+    all_types = list(type_chart)
+    profiles = {n: member_profile(t, type_chart) for n, t in team.items()}
+    coverages = {n: member_coverage(t, type_chart) for n, t in team.items()}
+    base, _ = score_team(list(profiles.values()), list(coverages.values()), all_types)
 
+    results = []
     for cand_name, cand_types in candidates.items():
         if cand_name in team:
             continue
+        cand_profile = member_profile(cand_types, type_chart)
+        cand_cov = member_coverage(cand_types, type_chart)
         best = None
         for member in team:
-            new_team = {n: t for n, t in team.items() if n != member}
-            new_team[cand_name] = cand_types
-            score = (team_badness(new_team, type_chart), team_weak_total(new_team, type_chart))
+            others = [m for m in team if m != member]
+            score = score_team(
+                [profiles[m] for m in others] + [cand_profile],
+                [coverages[m] for m in others] + [cand_cov],
+                all_types,
+            )
             if best is None or score < (best["new_badness"], best["weak_total"]):
                 best = {
                     "candidate": cand_name,
@@ -79,13 +122,18 @@ def suggest_swaps(
                 }
         results.append(best)
 
-    ranked = pd.DataFrame(results).sort_values(
+    if not results:
+        return pd.DataFrame(columns=SWAP_COLUMNS)
+
+    ranked = pd.DataFrame(results, columns=SWAP_COLUMNS).sort_values(
         by=["improvement", "weak_total", "candidate"],
         ascending=[False, True, True],
     )
     return ranked.head(top_n).reset_index(drop=True)
 
+
 FAST_SPEED = 100
+
 
 def stat_warnings(team_stats: dict[str, dict[str, int]]) -> list[str]:
     """Flag missing team roles based on base stats."""
