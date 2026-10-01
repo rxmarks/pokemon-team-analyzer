@@ -11,7 +11,6 @@ from pokedex.analysis import (
     team_table,
     team_weak_total,
 )
-
 from pokedex.fetch import load_type_chart
 
 SAMPLE_TEAM = {

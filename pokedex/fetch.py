@@ -1,5 +1,5 @@
-from pathlib import Path
 import json
+from pathlib import Path
 
 import requests
 
@@ -65,11 +65,13 @@ def get_types(pokemon_name: str) -> list[str]:
     type_entries = response.json()["types"]
     return [entry["type"]["name"] for entry in type_entries]
 
+
 def get_all_pokemon_names() -> list[str]:
     """Return every Pokémon name PokeAPI knows, including forms."""
     response = requests.get(f"{BASE_URL}/pokemon?limit=100000", timeout=20)
     response.raise_for_status()
     return sorted(item["name"] for item in response.json()["results"])
+
 
 def get_stats(pokemon_name: str) -> dict[str, int]:
     """Return base stats, e.g. {'hp': 91, 'attack': 134, ..., 'speed': 80}."""
@@ -80,6 +82,7 @@ def get_stats(pokemon_name: str) -> dict[str, int]:
     response.raise_for_status()
     return {s["stat"]["name"]: s["base_stat"] for s in response.json()["stats"]}
 
+
 POKEMON_CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "pokemon.json"
 
 
@@ -87,6 +90,7 @@ def load_pokemon_cache() -> dict:
     """Locally saved types + stats for every Pokémon (built by scripts/build_pokemon_cache.py)."""
     with POKEMON_CACHE_PATH.open(encoding="utf-8") as f:
         return json.load(f)
+
 
 MOVES_CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "moves.json"
 
@@ -105,6 +109,7 @@ def get_learnable_moves(pokemon_name: str) -> list[str]:
     )
     response.raise_for_status()
     return sorted(m["move"]["name"] for m in response.json()["moves"])
+
 
 SMOGON_PATH = Path(__file__).resolve().parent.parent / "data" / "smogon_usage.json"
 

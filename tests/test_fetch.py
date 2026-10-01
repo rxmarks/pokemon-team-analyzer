@@ -23,15 +23,19 @@ def test_get_all_pokemon_names_returns_sorted_names(monkeypatch):
         "rotom-wash",
         "zubat",
     ]
+
+
 class FakeStatsResponse:
     def raise_for_status(self):
         pass
 
     def json(self):
-        return {"stats": [
-            {"stat": {"name": "hp"}, "base_stat": 91},
-            {"stat": {"name": "speed"}, "base_stat": 80},
-        ]}
+        return {
+            "stats": [
+                {"stat": {"name": "hp"}, "base_stat": 91},
+                {"stat": {"name": "speed"}, "base_stat": 80},
+            ]
+        }
 
 
 def test_get_stats_parses_names(monkeypatch):

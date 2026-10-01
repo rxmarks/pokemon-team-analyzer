@@ -1,4 +1,4 @@
-from pokedex.analysis import damaging_move_types
+from pokedex.analysis import damaging_move_types, gaps_from_attack_types, move_coverage_gaps
 
 FAKE_CACHE = {
     "fire-fang": {"type": "fire", "damage_class": "physical", "power": 65},
@@ -23,7 +23,6 @@ def test_duplicate_types_collapse():
 def test_unknown_move_ignored():
     assert damaging_move_types(["not-a-move", "earthquake"], FAKE_CACHE) == {"ground"}
 
-from pokedex.analysis import gaps_from_attack_types, move_coverage_gaps
 
 FAKE_CHART = {
     "fire": {"double_damage_to": ["grass"]},

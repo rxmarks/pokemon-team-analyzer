@@ -9,10 +9,26 @@ pd.set_option("display.width", 200)
 SAMPLE_TEAM = ["dragonite", "gyarados", "garchomp", "ferrothorn", "togekiss", "tyranitar"]
 
 CANDIDATES = [
-    "lucario", "metagross", "scizor", "heatran", "magnezone",
-    "azumarill", "clefable", "conkeldurr", "excadrill", "empoleon",
-    "blissey", "skarmory", "corviknight", "breloom", "infernape",
-    "weavile", "gengar", "volcarona", "hydreigon", "rotom-wash",
+    "lucario",
+    "metagross",
+    "scizor",
+    "heatran",
+    "magnezone",
+    "azumarill",
+    "clefable",
+    "conkeldurr",
+    "excadrill",
+    "empoleon",
+    "blissey",
+    "skarmory",
+    "corviknight",
+    "breloom",
+    "infernape",
+    "weavile",
+    "gengar",
+    "volcarona",
+    "hydreigon",
+    "rotom-wash",
 ]
 
 

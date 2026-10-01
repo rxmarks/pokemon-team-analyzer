@@ -14,6 +14,7 @@ NAME_FIXES = {
     "ogerpon-cornerstone": "ogerpon-cornerstone-mask",
 }
 
+
 def to_pokeapi_name(smogon_name: str) -> str:
     """'Great Tusk' -> 'great-tusk', 'Mr. Mime' -> 'mr-mime'."""
     name = smogon_name.lower().replace(" ", "-")
@@ -29,12 +30,14 @@ def parse_usage(text: str, top_n: int) -> list[dict]:
         cols = [c.strip() for c in line.split("|")]
         if len(cols) < 4 or not cols[1].isdigit():
             continue
-        rows.append({
-            "rank": int(cols[1]),
-            "smogon_name": cols[2],
-            "name": to_pokeapi_name(cols[2]),
-            "usage": float(cols[3].rstrip("%")),
-        })
+        rows.append(
+            {
+                "rank": int(cols[1]),
+                "smogon_name": cols[2],
+                "name": to_pokeapi_name(cols[2]),
+                "usage": float(cols[3].rstrip("%")),
+            }
+        )
         if len(rows) == top_n:
             break
     return rows
@@ -54,4 +57,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    
