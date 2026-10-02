@@ -29,7 +29,7 @@ jobs:
         run: python -m scripts.build_smogon_cache
 
       - name: Open pull request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: bot/smogon-refresh
           commit-message: "Refresh Smogon usage data"
