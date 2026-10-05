@@ -24,8 +24,9 @@ from pokedex.fetch import (
     stats_cache_first,
     types_cache_first,
 )
+from pokedex.loadout import suggest_loadouts
 from pokedex.loadout_ui import render_loadout_suggestions
-from pokedex.move_ui import render_move_coverage
+from pokedex.move_ui import cached_learnable_moves, cached_move_cache, render_move_coverage
 from pokedex.showdown import parse_showdown
 from pokedex.threat_ui import cached_pokemon, render_meta_threats
 
@@ -208,6 +209,14 @@ if not candidates:
 
 with st.spinner("Ranking swap candidates..."):
     swaps = suggest_swaps(team, candidates, chart)
+
+try:
+    with st.spinner("Building move loadouts..."):
+        learnsets = {name: cached_learnable_moves(name) for name in team}
+        move_cache = cached_move_cache()
+        loadouts = suggest_loadouts(team, learnsets, team_stats, move_cache, chart)
+except requests.RequestException:
+    loadouts = {}
 
 shared_weak = int(((table[member_cols] >= 2).sum(axis=1) >= 2).sum())
 quad_weak = int((table[member_cols] >= 4).to_numpy().sum())
