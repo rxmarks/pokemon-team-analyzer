@@ -57,8 +57,9 @@ def test_app_loads_default_team():
     at = run_app()
     assert not at.exception
     headers = [h.value for h in at.subheader]
-    assert "Defense: weakness table" in headers
-    assert "Swap suggestions" in headers
+    assert "Team" in headers
+    tabs = [t.label for t in at.tabs]
+    assert tabs == ["Defense", "Offense", "Moves", "Meta threats", "Stats", "Swaps"]
 
 
 def test_app_with_empty_team_shows_prompt():
