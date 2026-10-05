@@ -16,6 +16,7 @@ from pokedex.config import (
     MIN_BST,
 )
 from pokedex.display import color_multiplier, display_name, format_multiplier, type_badges
+from pokedex.export import showdown_export
 from pokedex.fetch import (
     get_all_pokemon_names,
     get_sprite,
@@ -180,6 +181,14 @@ for col, (name, types) in zip(cols, team.items(), strict=False):
             st.image(sprite, width=96)
         st.markdown(f"**{display_name(name)}**")
         st.markdown(type_badges(types), unsafe_allow_html=True)
+
+st.download_button(
+    "Download Showdown team",
+    data=showdown_export(team),
+    file_name="pokemon-team.txt",
+    mime="text/plain",
+    help="Download this team's Pokémon names in Pokémon Showdown import format.",
+)
 
 table = team_table(team, chart)
 member_cols = list(team)
