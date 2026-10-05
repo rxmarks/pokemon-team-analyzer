@@ -6,6 +6,7 @@ from streamlit.testing.v1 import AppTest
 
 import pokedex.fetch as fetch
 import pokedex.move_ui as move_ui
+from pokedex import threat_ui
 
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 
@@ -35,6 +36,11 @@ def offline(monkeypatch):
     monkeypatch.setattr(fetch, "get_stats", lambda name: FAKE_STATS)
     monkeypatch.setattr(move_ui, "get_learnable_moves", lambda name: ["earthquake", "ice-beam"])
     monkeypatch.setattr(fetch, "get_sprite", lambda name: None)
+    monkeypatch.setattr(
+        threat_ui,
+        "cached_pokemon",
+        lambda: {n: {"types": t, "stats": FAKE_STATS} for n, t in FAKE_TYPES.items()},
+    )
 
 
 def run_app():

@@ -18,15 +18,14 @@ from pokedex.config import (
 from pokedex.fetch import (
     get_all_pokemon_names,
     get_sprite,
-    get_stats,
-    get_types,
-    load_pokemon_cache,
     load_type_chart,
+    stats_cache_first,
+    types_cache_first,
 )
 from pokedex.loadout_ui import render_loadout_suggestions
 from pokedex.move_ui import render_move_coverage
 from pokedex.showdown import parse_showdown
-from pokedex.threat_ui import render_meta_threats
+from pokedex.threat_ui import cached_pokemon, render_meta_threats
 
 st.set_page_config(page_title="Pokémon Team Analyzer", layout="wide")
 
@@ -38,7 +37,7 @@ def cached_chart() -> dict:
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
 def cached_types(name: str) -> list[str]:
-    return get_types(name)
+    return types_cache_first(name, cached_pokemon())
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
@@ -48,15 +47,14 @@ def cached_names() -> list[str]:
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
 def cached_stats(name: str) -> dict[str, int]:
-    return get_stats(name)
+    return stats_cache_first(name, cached_pokemon())
 
 
 @st.cache_data
 def cached_candidates() -> dict[str, list[str]]:
-    cache = load_pokemon_cache()
     return {
         name: d["types"]
-        for name, d in cache.items()
+        for name, d in cached_pokemon().items()
         if sum(d["stats"].values()) >= MIN_BST
         and not any(tag in name for tag in ("-gmax", "-totem"))
     }
@@ -104,8 +102,8 @@ with st.sidebar:
 try:
     all_names = cached_names()
 except requests.RequestException:
-    st.error("Couldn't load the Pokémon list from PokeAPI. Try again in a moment.")
-    st.stop()
+    all_names = sorted(cached_pokemon())
+    st.warning("PokeAPI is unreachable, so only locally cached Pokémon are available.")
 
 
 def team_from_url(valid: list[str]) -> list[str]:

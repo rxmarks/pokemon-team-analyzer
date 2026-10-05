@@ -130,3 +130,35 @@ def test_get_sprite_missing_returns_none(monkeypatch):
     payload = {"sprites": {"front_default": None}}
     monkeypatch.setattr(fetch._session, "get", fake_get(payload))
     assert fetch.get_sprite("some-form") is None
+
+
+CACHE = {"garchomp": {"types": ["dragon", "ground"], "stats": {"hp": 108, "attack": 130}}}
+
+
+def _no_api(*args, **kwargs):
+    raise AssertionError("PokeAPI should not be called for cached names")
+
+
+def test_types_cache_first_uses_cache(monkeypatch):
+    monkeypatch.setattr(fetch, "get_types", _no_api)
+    assert fetch.types_cache_first("garchomp", CACHE) == ["dragon", "ground"]
+
+
+def test_types_cache_first_falls_back(monkeypatch):
+    monkeypatch.setattr(fetch, "get_types", lambda name: ["fire"])
+    assert fetch.types_cache_first("missingno", CACHE) == ["fire"]
+
+
+def test_stats_cache_first_uses_cache(monkeypatch):
+    monkeypatch.setattr(fetch, "get_stats", _no_api)
+    assert fetch.stats_cache_first("garchomp", CACHE) == {"hp": 108, "attack": 130}
+
+
+def test_stats_cache_first_falls_back(monkeypatch):
+    monkeypatch.setattr(fetch, "get_stats", lambda name: {"hp": 1})
+    assert fetch.stats_cache_first("missingno", CACHE) == {"hp": 1}
+
+
+def test_cache_first_returns_copies():
+    fetch.types_cache_first("garchomp", CACHE).append("fire")
+    assert CACHE["garchomp"]["types"] == ["dragon", "ground"]
