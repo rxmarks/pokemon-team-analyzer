@@ -105,6 +105,7 @@ def suggest_swaps(
     candidates: Team,
     type_chart: TypeChart,
     top_n: int = TOP_N_SWAPS,
+    opponent_team: Team | None = None,
 ) -> pd.DataFrame:
     """For each candidate, find the best member to replace and rank by improvement."""
     all_types = list(type_chart)
@@ -183,6 +184,54 @@ def move_coverage_gaps(
     return gaps_from_attack_types(attack_types, type_chart)
 
 
+def best_stab_multiplier(
+    attacker_types: list[str],
+    defender_types: list[str],
+    type_chart: TypeChart,
+) -> float:
+    """Best damage multiplier from an attacker's native types."""
+    return max(
+        multiplier(attack_type, defender_types, type_chart) for attack_type in attacker_types
+    )
+
+
+def matchup_score(
+    own_types: list[str],
+    opponent_types: list[str],
+    type_chart: TypeChart,
+) -> float:
+    """Type-pressure score: positive is favorable for own_types, negative is risky."""
+    return best_stab_multiplier(own_types, opponent_types, type_chart) - best_stab_multiplier(
+        opponent_types, own_types, type_chart
+    )
+
+
+def matchup_label(score: float) -> str:
+    """Human-readable label for a type-pressure score."""
+    if score > 0:
+        return "Favorable"
+    if score < 0:
+        return "Risky"
+    return "Even"
+
+
+def matchup_table(
+    team: Team,
+    opponent_team: Team,
+    type_chart: TypeChart,
+) -> pd.DataFrame:
+    """Rows are user-team members; columns are opponents; values are matchup labels."""
+    table = pd.DataFrame(index=list(team))
+
+    for opponent_name, opponent_types in opponent_team.items():
+        table[opponent_name] = [
+            matchup_label(matchup_score(own_types, opponent_types, type_chart))
+            for own_types in team.values()
+        ]
+
+    return table
+
+
 def threat_report(
     team: Team,
     threats: Team,
@@ -210,3 +259,56 @@ def threat_report(
             }
         )
     return report
+
+
+OPPONENT_THREAT_COLUMNS = [
+    "opponent",
+    "threatens",
+    "answered_by",
+    "threat_score",
+    "weak_members",
+    "answers",
+]
+
+
+def opponent_threat_report(
+    team: Team,
+    opponent_team: Team,
+    type_chart: TypeChart,
+) -> pd.DataFrame:
+    """Detailed type-based threat report for a user-entered opponent team."""
+    rows: list[dict[str, Any]] = []
+
+    for opponent_name, opponent_types in opponent_team.items():
+        weak_members = [
+            member_name
+            for member_name, member_types in team.items()
+            if best_stab_multiplier(opponent_types, member_types, type_chart) > 1
+        ]
+        answers = [
+            member_name
+            for member_name, member_types in team.items()
+            if best_stab_multiplier(member_types, opponent_types, type_chart) > 1
+        ]
+        rows.append(
+            {
+                "opponent": opponent_name,
+                "threatens": len(weak_members),
+                "answered_by": len(answers),
+                "threat_score": len(weak_members) - len(answers),
+                "weak_members": ", ".join(weak_members) or "None",
+                "answers": ", ".join(answers) or "None",
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(columns=OPPONENT_THREAT_COLUMNS)
+
+    return (
+        pd.DataFrame(rows, columns=OPPONENT_THREAT_COLUMNS)
+        .sort_values(
+            ["threat_score", "threatens", "opponent"],
+            ascending=[False, False, True],
+        )
+        .reset_index(drop=True)
+    )
