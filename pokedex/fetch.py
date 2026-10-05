@@ -1,10 +1,20 @@
 import json
-from pathlib import Path
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from pokedex.config import (
+    BASE_URL,
+    MOVES_CACHE_PATH,
+    POKEMON_CACHE_PATH,
+    REQUEST_TIMEOUT,
+    RETRY_BACKOFF,
+    RETRY_STATUSES,
+    RETRY_TOTAL,
+    SMOGON_PATH,
+)
+from pokedex.config import TYPE_CHART_PATH as DATA_PATH
 from pokedex.types import MoveCache, PokemonCache, TypeChart, UsageData
 
 _session = requests.Session()
@@ -12,20 +22,14 @@ _session.mount(
     "https://",
     HTTPAdapter(
         max_retries=Retry(
-            total=3,
-            backoff_factor=0.5,
-            status_forcelist=(429, 500, 502, 503, 504),
+            total=RETRY_TOTAL,
+            backoff_factor=RETRY_BACKOFF,
+            status_forcelist=RETRY_STATUSES,
             allowed_methods=("GET",),
         )
     ),
 )
 
-BASE_URL = "https://pokeapi.co/api/v2"
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-DATA_PATH = DATA_DIR / "types.json"
-POKEMON_CACHE_PATH = DATA_DIR / "pokemon.json"
-MOVES_CACHE_PATH = DATA_DIR / "moves.json"
-SMOGON_PATH = DATA_DIR / "smogon_usage.json"
 
 TYPE_NAMES = [
     "normal",
@@ -61,7 +65,7 @@ def load_type_chart() -> TypeChart:
     type_chart: TypeChart = {}
 
     for type_name in TYPE_NAMES:
-        response = _session.get(f"{BASE_URL}/type/{type_name}", timeout=20)
+        response = _session.get(f"{BASE_URL}/type/{type_name}", timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
         relations = response.json()["damage_relations"]
@@ -80,7 +84,7 @@ def get_types(pokemon_name: str) -> list[str]:
     """Return a Pokémon's one or two types from PokeAPI."""
     response = _session.get(
         f"{BASE_URL}/pokemon/{pokemon_name.lower().strip()}",
-        timeout=20,
+        timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
 
@@ -90,7 +94,7 @@ def get_types(pokemon_name: str) -> list[str]:
 
 def get_all_pokemon_names() -> list[str]:
     """Return every Pokémon name PokeAPI knows, including forms."""
-    response = _session.get(f"{BASE_URL}/pokemon?limit=100000", timeout=20)
+    response = _session.get(f"{BASE_URL}/pokemon?limit=100000", timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
     return sorted(item["name"] for item in response.json()["results"])
 
@@ -99,7 +103,7 @@ def get_stats(pokemon_name: str) -> dict[str, int]:
     """Return base stats, e.g. {'hp': 91, 'attack': 134, ..., 'speed': 80}."""
     response = _session.get(
         f"{BASE_URL}/pokemon/{pokemon_name.lower().strip()}",
-        timeout=20,
+        timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
     return {s["stat"]["name"]: s["base_stat"] for s in response.json()["stats"]}
@@ -109,7 +113,7 @@ def get_learnable_moves(pokemon_name: str) -> list[str]:
     """Every move this Pokémon can learn, sorted."""
     response = _session.get(
         f"{BASE_URL}/pokemon/{pokemon_name.lower().strip()}",
-        timeout=20,
+        timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
     return sorted(m["move"]["name"] for m in response.json()["moves"])

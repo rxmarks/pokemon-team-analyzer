@@ -2,10 +2,9 @@ import requests
 import streamlit as st
 
 from pokedex.analysis import move_coverage_gaps
+from pokedex.config import CACHE_TTL_SECONDS, MAX_MOVES
 from pokedex.fetch import get_learnable_moves, load_move_cache
 from pokedex.types import MoveCache, Team, TypeChart
-
-ONE_DAY = 60 * 60 * 24
 
 
 @st.cache_data
@@ -13,7 +12,7 @@ def cached_move_cache() -> MoveCache:
     return load_move_cache()
 
 
-@st.cache_data(ttl=ONE_DAY, show_spinner=False)
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
 def cached_learnable_moves(name: str) -> list[str]:
     return get_learnable_moves(name)
 
@@ -43,7 +42,7 @@ def render_move_coverage(team: Team, type_chart: TypeChart) -> None:
         team_moves[name] = st.multiselect(
             pretty(name),
             options=damaging,
-            max_selections=4,
+            max_selections=MAX_MOVES,
             format_func=pretty,
             key=f"moves_{name}",
         )

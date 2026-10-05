@@ -2,10 +2,10 @@ from typing import Any
 
 import pandas as pd
 
+from pokedex.config import FAST_SPEED, TOP_N_SWAPS
 from pokedex.types import MoveCache, Team, TypeChart
 
 SWAP_COLUMNS = ["candidate", "replaces", "new_badness", "weak_total", "improvement"]
-FAST_SPEED = 100
 
 
 def multiplier(attack_type: str, defender_types: list[str], type_chart: TypeChart) -> float:
@@ -104,7 +104,7 @@ def suggest_swaps(
     team: Team,
     candidates: Team,
     type_chart: TypeChart,
-    top_n: int = 5,
+    top_n: int = TOP_N_SWAPS,
 ) -> pd.DataFrame:
     """For each candidate, find the best member to replace and rank by improvement."""
     all_types = list(type_chart)
