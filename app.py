@@ -27,7 +27,12 @@ from pokedex.move_ui import render_move_coverage
 from pokedex.showdown import parse_showdown
 from pokedex.threat_ui import cached_pokemon, render_meta_threats
 
-st.set_page_config(page_title="Pokémon Team Analyzer", layout="wide")
+st.set_page_config(page_title="Pokémon Team Analyzer", page_icon="🔴", layout="wide")
+
+SWAP_OUT = "replaces"
+SWAP_IN = "candidate"
+SWAP_GAIN = "improvement"
+SWAP_BUTTONS = 5
 
 
 @st.cache_data
@@ -93,10 +98,10 @@ with st.sidebar:
         "Analyzes a Pokémon team's type matchups and suggests swaps.\n\n"
         "- **Defense:** damage multipliers per attack type\n"
         "- **Offense:** types your team can't hit super-effectively\n"
-        "- **Moves:** coverage from up to 4 actual moves\n"
+        "- **Moves:** coverage from actual moves, plus suggested loadouts\n"
         "- **Meta threats:** matchups vs. top Smogon usage\n"
         "- **Stats:** role and speed checks\n"
-        "- **Suggestions:** swaps that fix the most weaknesses\n\n"
+        "- **Swaps:** one-click replacements that fix the most weaknesses\n\n"
         "**Data:** [PokeAPI](https://pokeapi.co) · "
         "[Smogon usage stats](https://www.smogon.com/stats/)\n\n"
         "[GitHub repo](https://github.com/rxmarks/pokemon-team-analyzer)"
@@ -128,6 +133,10 @@ def import_showdown() -> None:
     st.session_state["import_ok"] = bool(found)
     if found:
         st.session_state["team"] = found[:MAX_TEAM_SIZE]
+
+
+def apply_swap(out_name: str, in_name: str) -> None:
+    st.session_state["team"] = [in_name if n == out_name else n for n in st.session_state["team"]]
 
 
 if "team" not in st.session_state:
@@ -168,7 +177,7 @@ if not names:
     st.stop()
 
 chart = cached_chart()
-team = {}
+team: dict[str, list[str]] = {}
 with st.spinner("Fetching Pokémon data..."):
     for name in names:
         try:
@@ -198,20 +207,44 @@ except requests.RequestException:
     st.error("Couldn't load base stats from PokeAPI. Try again in a moment.")
     st.stop()
 
+candidates = cached_candidates()
+if not candidates:
+    st.error("No candidates loaded. Check that data/pokemon.json exists and isn't empty.")
+    st.stop()
+
+with st.spinner("Ranking swap candidates..."):
+    swaps = suggest_swaps(team, candidates, chart)
+
 shared_weak = int(((table[member_cols] >= 2).sum(axis=1) >= 2).sum())
 quad_weak = int((table[member_cols] >= 4).to_numpy().sum())
+best_swap = f"−{swaps[SWAP_GAIN].iloc[0]:g}" if not swaps.empty else "None"
 
-m1, m2, m3, m4 = st.columns(4)
+m1, m2, m3, m4, m5 = st.columns(5)
 m1.metric(
     "Team badness",
     team_badness(team, chart),
     help="Problem types + coverage gaps. Lower is better.",
 )
 m2.metric(
-    "Shared weaknesses", shared_weak, help="Attack types that hit 2+ members super-effectively."
+    "Shared weaknesses",
+    shared_weak,
+    help="Attack types that hit 2+ members super-effectively.",
 )
-m3.metric("Coverage gaps", len(gaps), help="Types no member's type hits super-effectively.")
-m4.metric("4x weaknesses", quad_weak, help="Member/type pairs taking quadruple damage.")
+m3.metric(
+    "Coverage gaps",
+    len(gaps),
+    help="Types no member's type hits super-effectively.",
+)
+m4.metric(
+    "4x weaknesses",
+    quad_weak,
+    help="Member/type pairs taking quadruple damage.",
+)
+m5.metric(
+    "Best swap",
+    best_swap,
+    help="Badness drop from the top-ranked single swap.",
+)
 
 defense, offense, moves, threats, stats_tab, swaps_tab = st.tabs(
     ["Defense", "Offense", "Moves", "Meta threats", "Stats", "Swaps"]
@@ -265,16 +298,49 @@ with stats_tab:
         )
 
 with swaps_tab:
-    candidates = cached_candidates()
-    if not candidates:
-        st.error("No candidates loaded. Check that data/pokemon.json exists and isn't empty.")
-        st.stop()
     st.caption(f"Searching {len(candidates)} Pokémon with base stat total {MIN_BST}+.")
-    with st.spinner("Ranking swap candidates..."):
-        swaps = suggest_swaps(team, candidates, chart)
-    st.dataframe(swaps, width="stretch", hide_index=True)
+    if swaps.empty:
+        st.success("No single swap improves this team.")
+    else:
+        shown = swaps.copy()
+        shown.insert(0, "sprite", [cached_sprite(n) for n in shown[SWAP_IN]])
+        st.dataframe(
+            shown,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "sprite": st.column_config.ImageColumn("", width="small"),
+                SWAP_IN: st.column_config.TextColumn("Swap in"),
+                SWAP_OUT: st.column_config.TextColumn("Swap out"),
+                "new_badness": st.column_config.NumberColumn(
+                    "New badness", help="Lower is better."
+                ),
+                SWAP_GAIN: st.column_config.NumberColumn(
+                    "Improvement", help="Badness drop vs. current team."
+                ),
+                "weak_total": st.column_config.NumberColumn(
+                    "Weakness total",
+                    help="Sum of super-effective multipliers; tiebreaker, lower is better.",
+                ),
+            },
+        )
+
+        st.markdown("**Try a swap**")
+        for i, row in enumerate(swaps.head(SWAP_BUTTONS).itertuples(index=False)):
+            out_name = getattr(row, SWAP_OUT)
+            in_name = getattr(row, SWAP_IN)
+            gain = getattr(row, SWAP_GAIN)
+            st.button(
+                f"{display_name(out_name)} → {display_name(in_name)}  (−{gain:g} badness)",
+                key=f"swap_{i}",
+                on_click=apply_swap,
+                args=(out_name, in_name),
+            )
+        st.caption("Applying a swap updates the team, the URL, and every tab.")
+
     with st.expander("How to read swap suggestions"):
         st.markdown(
-            "Each row replaces one team member with a candidate and shows the new "
-            "team badness. Lower is better."
+            "Each row replaces one team member with a candidate. 'New badness' is "
+            "the team's score after the swap, and lower is better. Use the buttons "
+            "to try a swap. The URL updates, so you can share the result."
         )

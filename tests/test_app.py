@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+import requests
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
@@ -62,6 +63,24 @@ def test_app_loads_default_team():
     assert tabs == ["Defense", "Offense", "Moves", "Meta threats", "Stats", "Swaps"]
 
 
+def test_summary_metrics_render():
+    at = run_app()
+    assert not at.exception
+    assert [m.label for m in at.metric][:5] == [
+        "Team badness",
+        "Shared weaknesses",
+        "Coverage gaps",
+        "4x weaknesses",
+        "Best swap",
+    ]
+
+
+def test_loadout_section_renders():
+    at = run_app()
+    assert not at.exception
+    assert "Suggested move loadouts" in [h.value for h in at.subheader]
+
+
 def test_app_with_empty_team_shows_prompt():
     at = run_app()
     at.multiselect[0].set_value([]).run()
@@ -85,6 +104,36 @@ def test_url_with_only_invalid_names_falls_back_to_default():
     at = run_app_with_team("missingno")
     assert not at.exception
     assert at.multiselect[0].value == list(FAKE_TYPES)
+
+
+def test_apply_swap_replaces_one_member():
+    at = run_app_with_team("garchomp,tyranitar")
+    assert not at.exception
+    swap_buttons = [b for b in at.button if b.key and b.key.startswith("swap_")]
+    if not swap_buttons:
+        pytest.skip("No improving swap for this fake team")
+    before = list(at.multiselect[0].value)
+    swap_buttons[0].click().run()
+    after = list(at.multiselect[0].value)
+    assert not at.exception
+    assert len(after) == len(before)
+    assert len(set(before) - set(after)) == 1
+    assert at.query_params["team"] == [",".join(after)] or at.query_params["team"] == ",".join(
+        after
+    )
+
+
+def test_offline_name_list_falls_back_to_cache(monkeypatch):
+    def down():
+        raise requests.ConnectionError("PokeAPI down")
+
+    monkeypatch.setattr(fetch, "get_all_pokemon_names", down)
+    at = run_app()
+    assert not at.exception
+    assert any("PokeAPI is unreachable" in w.value for w in at.warning)
+    assert at.multiselect[0].options == sorted(FAKE_TYPES) or len(at.multiselect[0].options) == len(
+        FAKE_TYPES
+    )
 
 
 PASTE = """\
