@@ -88,12 +88,29 @@ except requests.RequestException:
     st.error("Couldn't load the Pokémon list from PokeAPI. Try again in a moment.")
     st.stop()
 
+
+def team_from_url(valid: list[str]) -> list[str]:
+    raw = st.query_params.get("team")
+    if not raw:
+        return DEFAULT_TEAM
+    valid_set = set(valid)
+    picked = [n.strip().lower() for n in raw.split(",")]
+    cleaned = list(dict.fromkeys(n for n in picked if n in valid_set))
+    return cleaned[:6] or DEFAULT_TEAM
+
+
 names = st.multiselect(
     "Pick up to 6 Pokémon (type to search)",
     options=all_names,
-    default=DEFAULT_TEAM,
+    default=team_from_url(all_names),
     max_selections=6,
 )
+
+if names:
+    st.query_params["team"] = ",".join(names)
+    st.caption("The page URL now links to this team. Copy it to share.")
+else:
+    st.query_params.pop("team", None)
 
 if not names:
     st.info("Pick at least one Pokémon to start.")
