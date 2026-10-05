@@ -15,6 +15,7 @@ from pokedex.config import (
     MAX_TEAM_SIZE,
     MIN_BST,
 )
+from pokedex.display import color_multiplier, display_name, format_multiplier, type_badges
 from pokedex.fetch import (
     get_all_pokemon_names,
     get_sprite,
@@ -71,22 +72,6 @@ def cached_sprite(name: str) -> str | None:
         return get_sprite(name)
     except requests.RequestException:
         return None
-
-
-def color_multiplier(value):
-    if value >= 4:
-        return "background-color: #b91c1c; color: white"
-    if value >= 2:
-        return "background-color: #f87171"
-    if value == 0:
-        return "background-color: #60a5fa"
-    if value < 1:
-        return "background-color: #86efac"
-    return ""
-
-
-def display_name(name: str) -> str:
-    return name.replace("-", " ").title()
 
 
 st.title("Pokémon Team Analyzer")
@@ -194,7 +179,7 @@ for col, (name, types) in zip(cols, team.items(), strict=False):
         if sprite:
             st.image(sprite, width=96)
         st.markdown(f"**{display_name(name)}**")
-        st.caption(" / ".join(t.title() for t in types))
+        st.markdown(type_badges(types), unsafe_allow_html=True)
 
 table = team_table(team, chart)
 member_cols = list(team)
@@ -251,11 +236,15 @@ defense, offense, moves, threats, stats_tab, swaps_tab = st.tabs(
 )
 
 with defense:
-    styled = table.style.map(color_multiplier, subset=member_cols).format(
-        "{:g}", subset=member_cols + ["total"]
+    styled = (
+        table.style.map(color_multiplier, subset=member_cols)
+        .format(format_multiplier, subset=member_cols)
+        .format("{:g}", subset=["# weak", "# resist", "total"])
     )
     st.dataframe(styled, width="stretch")
-    st.caption("Red = weak (dark red = 4x), green = resists, blue = immune.")
+    st.caption(
+        "▲▲ = 4× weak · ▲ = 2× weak · ▼ = resists · ▼▼ = double resist · ✕ = immune. Colors match."
+    )
     with st.expander("How to read this table"):
         st.markdown(
             "Each row is an attack type and each column is one of your Pokémon. "
@@ -265,7 +254,8 @@ with defense:
 
 with offense:
     if gaps:
-        st.warning("No super-effective coverage against: " + ", ".join(sorted(gaps)))
+        st.warning("No super-effective coverage against these types:")
+        st.markdown(type_badges(sorted(gaps)), unsafe_allow_html=True)
     else:
         st.success("Your team's types hit every type super-effectively.")
     with st.expander("How to read coverage gaps"):
