@@ -9,6 +9,12 @@ from pokedex.analysis import (
     team_badness,
     team_table,
 )
+from pokedex.config import (
+    CACHE_TTL_SECONDS,
+    DEFAULT_TEAM,
+    MAX_TEAM_SIZE,
+    MIN_BST,
+)
 from pokedex.fetch import (
     get_all_pokemon_names,
     get_stats,
@@ -22,27 +28,23 @@ from pokedex.threat_ui import render_meta_threats
 
 st.set_page_config(page_title="Pokémon Team Analyzer", layout="wide")
 
-DEFAULT_TEAM = ["dragonite", "gyarados", "garchomp", "ferrothorn", "togekiss", "tyranitar"]
-MIN_BST = 500
-ONE_DAY = 60 * 60 * 24
-
 
 @st.cache_data
 def cached_chart() -> dict:
     return load_type_chart()
 
 
-@st.cache_data(ttl=ONE_DAY, show_spinner=False)
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
 def cached_types(name: str) -> list[str]:
     return get_types(name)
 
 
-@st.cache_data(ttl=ONE_DAY, show_spinner=False)
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
 def cached_names() -> list[str]:
     return get_all_pokemon_names()
 
 
-@st.cache_data(ttl=ONE_DAY, show_spinner=False)
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
 def cached_stats(name: str) -> dict[str, int]:
     return get_stats(name)
 
@@ -97,7 +99,7 @@ def team_from_url(valid: list[str]) -> list[str]:
     valid_set = set(valid)
     picked = [n.strip().lower() for n in raw.split(",")]
     cleaned = list(dict.fromkeys(n for n in picked if n in valid_set))
-    return cleaned[:6] or DEFAULT_TEAM
+    return cleaned[:MAX_TEAM_SIZE] or DEFAULT_TEAM
 
 
 def import_showdown() -> None:
@@ -107,7 +109,7 @@ def import_showdown() -> None:
     st.session_state["import_skipped"] = [m.species for m in mons if m.species not in valid]
     st.session_state["import_ok"] = bool(found)
     if found:
-        st.session_state["team"] = found[:6]
+        st.session_state["team"] = found[:MAX_TEAM_SIZE]
 
 
 if "team" not in st.session_state:
@@ -116,7 +118,7 @@ if "team" not in st.session_state:
 names = st.multiselect(
     "Pick up to 6 Pokémon (type to search)",
     options=all_names,
-    max_selections=6,
+    max_selections=MAX_TEAM_SIZE,
     key="team",
 )
 
