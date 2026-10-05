@@ -138,6 +138,22 @@ def load_pokemon_cache() -> PokemonCache:
     return data
 
 
+def types_cache_first(name: str, cache: PokemonCache) -> list[str]:
+    """Types from the local cache; falls back to PokeAPI for names not cached."""
+    entry = cache.get(name)
+    if entry is not None:
+        return list(entry["types"])
+    return get_types(name)
+
+
+def stats_cache_first(name: str, cache: PokemonCache) -> dict[str, int]:
+    """Base stats from the local cache; falls back to PokeAPI for names not cached."""
+    entry = cache.get(name)
+    if entry is not None:
+        return dict(entry["stats"])
+    return get_stats(name)
+
+
 def load_move_cache() -> MoveCache:
     """Locally saved type/damage_class/power for every move."""
     with MOVES_CACHE_PATH.open(encoding="utf-8") as f:
