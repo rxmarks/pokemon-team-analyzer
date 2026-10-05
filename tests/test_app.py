@@ -34,6 +34,7 @@ def offline(monkeypatch):
     monkeypatch.setattr(fetch, "get_types", lambda name: FAKE_TYPES[name])
     monkeypatch.setattr(fetch, "get_stats", lambda name: FAKE_STATS)
     monkeypatch.setattr(move_ui, "get_learnable_moves", lambda name: ["earthquake", "ice-beam"])
+    monkeypatch.setattr(fetch, "get_sprite", lambda name: None)
 
 
 def run_app():
