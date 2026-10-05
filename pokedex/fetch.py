@@ -2,7 +2,21 @@ import json
 from pathlib import Path
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
+_session = requests.Session()
+_session.mount(
+    "https://",
+    HTTPAdapter(
+        max_retries=Retry(
+            total=3,
+            backoff_factor=0.5,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=("GET",),
+        )
+    ),
+)
 BASE_URL = "https://pokeapi.co/api/v2"
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "types.json"
 
@@ -39,7 +53,7 @@ def load_type_chart() -> dict:
     type_chart = {}
 
     for type_name in TYPE_NAMES:
-        response = requests.get(f"{BASE_URL}/type/{type_name}", timeout=20)
+        response = _session.get(f"{BASE_URL}/type/{type_name}", timeout=20)
         response.raise_for_status()
 
         relations = response.json()["damage_relations"]
@@ -56,7 +70,7 @@ def load_type_chart() -> dict:
 
 def get_types(pokemon_name: str) -> list[str]:
     """Return a Pokémon's one or two types from PokeAPI."""
-    response = requests.get(
+    response = _session.get(
         f"{BASE_URL}/pokemon/{pokemon_name.lower().strip()}",
         timeout=20,
     )
@@ -68,14 +82,14 @@ def get_types(pokemon_name: str) -> list[str]:
 
 def get_all_pokemon_names() -> list[str]:
     """Return every Pokémon name PokeAPI knows, including forms."""
-    response = requests.get(f"{BASE_URL}/pokemon?limit=100000", timeout=20)
+    response = _session.get(f"{BASE_URL}/pokemon?limit=100000", timeout=20)
     response.raise_for_status()
     return sorted(item["name"] for item in response.json()["results"])
 
 
 def get_stats(pokemon_name: str) -> dict[str, int]:
     """Return base stats, e.g. {'hp': 91, 'attack': 134, ..., 'speed': 80}."""
-    response = requests.get(
+    response = _session.get(
         f"{BASE_URL}/pokemon/{pokemon_name.lower().strip()}",
         timeout=20,
     )
@@ -103,7 +117,7 @@ def load_move_cache() -> dict:
 
 def get_learnable_moves(pokemon_name: str) -> list[str]:
     """Every move this Pokémon can learn, sorted."""
-    response = requests.get(
+    response = _session.get(
         f"{BASE_URL}/pokemon/{pokemon_name.lower().strip()}",
         timeout=20,
     )

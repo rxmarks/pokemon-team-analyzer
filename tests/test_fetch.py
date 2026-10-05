@@ -16,7 +16,7 @@ class FakeResponse:
 
 
 def test_get_all_pokemon_names_returns_sorted_names(monkeypatch):
-    monkeypatch.setattr(fetch.requests, "get", lambda *args, **kwargs: FakeResponse())
+    monkeypatch.setattr(fetch._session, "get", lambda *args, **kwargs: FakeResponse())
 
     assert fetch.get_all_pokemon_names() == [
         "abra",
@@ -39,5 +39,5 @@ class FakeStatsResponse:
 
 
 def test_get_stats_parses_names(monkeypatch):
-    monkeypatch.setattr(fetch.requests, "get", lambda *args, **kwargs: FakeStatsResponse())
+    monkeypatch.setattr(fetch._session, "get", lambda *args, **kwargs: FakeStatsResponse())
     assert fetch.get_stats("dragonite") == {"hp": 91, "speed": 80}

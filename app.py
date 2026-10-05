@@ -23,6 +23,7 @@ st.set_page_config(page_title="Pokémon Team Analyzer", layout="wide")
 
 DEFAULT_TEAM = ["dragonite", "gyarados", "garchomp", "ferrothorn", "togekiss", "tyranitar"]
 MIN_BST = 500
+ONE_DAY = 60 * 60 * 24
 
 
 @st.cache_data
@@ -30,17 +31,17 @@ def cached_chart() -> dict:
     return load_type_chart()
 
 
-@st.cache_data
+@st.cache_data(ttl=ONE_DAY, show_spinner=False)
 def cached_types(name: str) -> list[str]:
     return get_types(name)
 
 
-@st.cache_data
+@st.cache_data(ttl=ONE_DAY, show_spinner=False)
 def cached_names() -> list[str]:
     return get_all_pokemon_names()
 
 
-@st.cache_data
+@st.cache_data(ttl=ONE_DAY, show_spinner=False)
 def cached_stats(name: str) -> dict[str, int]:
     return get_stats(name)
 
@@ -71,9 +72,25 @@ def color_multiplier(value):
 st.title("Pokémon Team Analyzer")
 st.caption("Type-coverage analysis and swap suggestions. Data from PokeAPI.")
 
+with st.sidebar:
+    st.header("About")
+    st.markdown(
+        "Analyzes a Pokémon team's type matchups using PokeAPI data.\n\n"
+        "- **Defense:** damage multipliers per attack type\n"
+        "- **Offense:** types your team can't hit super-effectively\n"
+        "- **Suggestions:** swaps that fix the most weaknesses\n\n"
+        "[GitHub repo](https://github.com/rxmarks/pokemon-team-analyzer)"
+    )
+
+try:
+    all_names = cached_names()
+except requests.RequestException:
+    st.error("Couldn't load the Pokémon list from PokeAPI. Try again in a moment.")
+    st.stop()
+
 names = st.multiselect(
     "Pick up to 6 Pokémon (type to search)",
-    options=cached_names(),
+    options=all_names,
     default=DEFAULT_TEAM,
     max_selections=6,
 )
@@ -84,12 +101,13 @@ if not names:
 
 chart = cached_chart()
 team = {}
-for name in names:
-    try:
-        team[name] = cached_types(name)
-    except requests.RequestException:
-        st.error(f"Couldn't load '{name}' from PokeAPI. Try again in a moment.")
-        st.stop()
+with st.spinner("Fetching Pokémon data..."):
+    for name in names:
+        try:
+            team[name] = cached_types(name)
+        except requests.RequestException:
+            st.error(f"Couldn't load '{name}' from PokeAPI. Try again in a moment.")
+            st.stop()
 
 st.subheader("Team")
 st.write(", ".join(f"**{n}** ({' / '.join(t)})" for n, t in team.items()))
@@ -103,6 +121,13 @@ styled = table.style.map(color_multiplier, subset=member_cols).format(
 st.dataframe(styled, width="stretch")
 st.caption("Red = weak (dark red = 4x), green = resists, blue = immune.")
 
+with st.expander("How to read this table"):
+    st.markdown(
+        "Each row is an attack type and each column is one of your Pokémon. "
+        "Cells show the damage multiplier: 4 and 2 mean weak, 0.5 and 0.25 mean "
+        "resists, 0 means immune. 'total' sums the row across your team."
+    )
+
 st.subheader("Offense: coverage gaps")
 gaps = coverage_gaps(team, chart)
 if gaps:
@@ -114,7 +139,13 @@ render_move_coverage(team, chart)
 render_meta_threats(team, chart)
 
 st.subheader("Stats: role check")
-team_stats = {n: cached_stats(n) for n in team}
+try:
+    with st.spinner("Fetching base stats..."):
+        team_stats = {n: cached_stats(n) for n in team}
+except requests.RequestException:
+    st.error("Couldn't load base stats from PokeAPI. Try again in a moment.")
+    st.stop()
+
 st.dataframe(pd.DataFrame(team_stats).T, width="stretch")
 warnings = stat_warnings(team_stats)
 if warnings:
@@ -136,23 +167,3 @@ if not candidates:
 
 st.caption(f"Searching {len(candidates)} Pokémon with base stat total {MIN_BST}+.")
 st.dataframe(suggest_swaps(team, candidates, chart), width="stretch", hide_index=True)
-
-with st.sidebar:
-    st.header("About")
-    st.markdown(
-        "Analyzes a Pokémon team's type matchups using PokeAPI data.\n\n"
-        "- **Defense:** damage multipliers per attack type\n"
-        "- **Offense:** types your team can't hit super-effectively\n"
-        "- **Suggestions:** swaps that fix the most weaknesses\n\n"
-        "[GitHub repo](https://github.com/rxmarks/pokemon-team-analyzer)"
-    )
-
-with st.spinner("Fetching Pokémon data..."):
-    team_types = {name: get_types(name) for name in names}
-
-with st.expander("How to read this table"):
-    st.markdown(
-        "Each cell is the damage multiplier that attack type deals to that Pokémon. "
-        "4 and 2 mean weak, 0.5 and 0.25 mean resists, 0 means immune. "
-        "'# weak' counts members taking 2x or more."
-    )
