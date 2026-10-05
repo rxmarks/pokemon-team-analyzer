@@ -37,4 +37,12 @@ jobs:
         run: mypy
 
       - name: Run tests
-        run: python -m pytest --cov=pokedex --cov-report=term-missing --cov-fail-under=90
+        run: python -m pytest --cov=pokedex --cov-report=term-missing --cov-fail-under=90 --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.14'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: true
