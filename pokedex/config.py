@@ -27,3 +27,30 @@ TYPE_CHART_PATH = DATA_DIR / "types.json"
 POKEMON_CACHE_PATH = DATA_DIR / "pokemon.json"
 MOVES_CACHE_PATH = DATA_DIR / "moves.json"
 SMOGON_PATH = DATA_DIR / "smogon_usage.json"
+
+MIN_MOVE_POWER = 60
+LOADOUT_SIZE = 4
+MOVE_BLOCKLIST = frozenset(
+    {
+        "hyper-beam",
+        "giga-impact",
+        "explosion",
+        "self-destruct",
+        "focus-punch",
+        "dream-eater",
+        "solar-beam",
+        "sky-attack",
+        "future-sight",
+        "last-resort",
+        "belch",
+        "blast-burn",
+        "frenzy-plant",
+        "hydro-cannon",
+        "roar-of-time",
+        "prismatic-laser",
+        "eternabeam",
+        "meteor-assault",
+        "mind-blown",
+        "steel-beam",
+    }
+)

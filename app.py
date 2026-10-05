@@ -23,6 +23,7 @@ from pokedex.fetch import (
     load_pokemon_cache,
     load_type_chart,
 )
+from pokedex.loadout_ui import render_loadout_suggestions
 from pokedex.move_ui import render_move_coverage
 from pokedex.showdown import parse_showdown
 from pokedex.threat_ui import render_meta_threats
@@ -262,3 +263,5 @@ with st.expander("How to read swap suggestions"):
         "team badness. Badness counts types that hit 2+ members super-"
         "effectively plus offensive coverage gaps. Lower is better."
     )
+
+render_loadout_suggestions(team, chart, team_stats)
