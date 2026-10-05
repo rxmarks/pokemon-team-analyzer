@@ -5,6 +5,8 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from pokedex.types import MoveCache, PokemonCache, TypeChart, UsageData
+
 _session = requests.Session()
 _session.mount(
     "https://",
@@ -17,8 +19,13 @@ _session.mount(
         )
     ),
 )
+
 BASE_URL = "https://pokeapi.co/api/v2"
-DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "types.json"
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+DATA_PATH = DATA_DIR / "types.json"
+POKEMON_CACHE_PATH = DATA_DIR / "pokemon.json"
+MOVES_CACHE_PATH = DATA_DIR / "moves.json"
+SMOGON_PATH = DATA_DIR / "smogon_usage.json"
 
 TYPE_NAMES = [
     "normal",
@@ -42,15 +49,16 @@ TYPE_NAMES = [
 ]
 
 
-def load_type_chart() -> dict:
+def load_type_chart() -> TypeChart:
     """Download the 18-type chart once and save it locally."""
     DATA_PATH.parent.mkdir(exist_ok=True)
 
     if DATA_PATH.exists():
         with DATA_PATH.open("r", encoding="utf-8") as file:
-            return json.load(file)
+            cached: TypeChart = json.load(file)
+        return cached
 
-    type_chart = {}
+    type_chart: TypeChart = {}
 
     for type_name in TYPE_NAMES:
         response = _session.get(f"{BASE_URL}/type/{type_name}", timeout=20)
@@ -97,24 +105,6 @@ def get_stats(pokemon_name: str) -> dict[str, int]:
     return {s["stat"]["name"]: s["base_stat"] for s in response.json()["stats"]}
 
 
-POKEMON_CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "pokemon.json"
-
-
-def load_pokemon_cache() -> dict:
-    """Locally saved types + stats for every Pokémon (built by scripts/build_pokemon_cache.py)."""
-    with POKEMON_CACHE_PATH.open(encoding="utf-8") as f:
-        return json.load(f)
-
-
-MOVES_CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "moves.json"
-
-
-def load_move_cache() -> dict:
-    """Locally saved type/damage_class/power for every move."""
-    with MOVES_CACHE_PATH.open(encoding="utf-8") as f:
-        return json.load(f)
-
-
 def get_learnable_moves(pokemon_name: str) -> list[str]:
     """Every move this Pokémon can learn, sorted."""
     response = _session.get(
@@ -125,10 +115,22 @@ def get_learnable_moves(pokemon_name: str) -> list[str]:
     return sorted(m["move"]["name"] for m in response.json()["moves"])
 
 
-SMOGON_PATH = Path(__file__).resolve().parent.parent / "data" / "smogon_usage.json"
+def load_pokemon_cache() -> PokemonCache:
+    """Locally saved types + stats for every Pokémon (built by scripts/build_pokemon_cache.py)."""
+    with POKEMON_CACHE_PATH.open(encoding="utf-8") as f:
+        data: PokemonCache = json.load(f)
+    return data
 
 
-def load_smogon_usage() -> dict:
+def load_move_cache() -> MoveCache:
+    """Locally saved type/damage_class/power for every move."""
+    with MOVES_CACHE_PATH.open(encoding="utf-8") as f:
+        data: MoveCache = json.load(f)
+    return data
+
+
+def load_smogon_usage() -> UsageData:
     """Saved Smogon top-30 usage: month, format, and ranked list."""
     with SMOGON_PATH.open(encoding="utf-8") as f:
-        return json.load(f)
+        data: UsageData = json.load(f)
+    return data

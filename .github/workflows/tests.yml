@@ -29,6 +29,9 @@ jobs:
           ruff check .
           ruff format --check .
           
+      - name: Type check
+        run: mypy
+
       - name: Run tests
         run: |
           python -m pytest --cov=pokedex --cov-report=term-missing --cov-fail-under=90

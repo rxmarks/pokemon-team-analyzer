@@ -3,14 +3,17 @@ import streamlit as st
 
 from pokedex.analysis import move_coverage_gaps
 from pokedex.fetch import get_learnable_moves, load_move_cache
+from pokedex.types import MoveCache, Team, TypeChart
+
+ONE_DAY = 60 * 60 * 24
 
 
 @st.cache_data
-def cached_move_cache() -> dict:
+def cached_move_cache() -> MoveCache:
     return load_move_cache()
 
 
-@st.cache_data
+@st.cache_data(ttl=ONE_DAY, show_spinner=False)
 def cached_learnable_moves(name: str) -> list[str]:
     return get_learnable_moves(name)
 
@@ -19,12 +22,12 @@ def pretty(move: str) -> str:
     return move.replace("-", " ").title()
 
 
-def render_move_coverage(team: dict[str, list[str]], type_chart: dict) -> None:
+def render_move_coverage(team: Team, type_chart: TypeChart) -> None:
     st.subheader("Move-based coverage")
     st.caption("Pick up to 4 moves per Pokémon. Status moves don't count toward coverage.")
 
     move_cache = cached_move_cache()
-    team_moves = {}
+    team_moves: dict[str, list[str]] = {}
     for name in team:
         try:
             learnable = cached_learnable_moves(name)
