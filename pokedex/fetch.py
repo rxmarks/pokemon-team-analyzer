@@ -15,7 +15,7 @@ from pokedex.config import (
     SMOGON_PATH,
 )
 from pokedex.config import TYPE_CHART_PATH as DATA_PATH
-from pokedex.types import MoveCache, PokemonCache, TypeChart, UsageData
+from pokedex.types import JSON, MoveCache, PokemonCache, TypeChart, UsageData
 
 _session = requests.Session()
 _session.mount(
@@ -107,6 +107,18 @@ def get_stats(pokemon_name: str) -> dict[str, int]:
     )
     response.raise_for_status()
     return {s["stat"]["name"]: s["base_stat"] for s in response.json()["stats"]}
+
+
+def get_sprite(pokemon_name: str) -> str | None:
+    """Return the URL of a Pokémon's front sprite, or None if PokeAPI has none."""
+    response = _session.get(
+        f"{BASE_URL}/pokemon/{pokemon_name.lower().strip()}",
+        timeout=REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+    data: JSON = response.json()
+    url: str | None = data["sprites"]["front_default"]
+    return url
 
 
 def get_learnable_moves(pokemon_name: str) -> list[str]:

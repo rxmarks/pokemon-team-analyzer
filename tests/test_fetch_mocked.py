@@ -118,3 +118,15 @@ def test_session_retries_transient_errors():
     assert retry.total == 3
     assert 503 in retry.status_forcelist
     assert 404 not in retry.status_forcelist
+
+
+def test_get_sprite_returns_url(monkeypatch):
+    payload = {"sprites": {"front_default": "https://example.com/garchomp.png"}}
+    monkeypatch.setattr(fetch._session, "get", fake_get(payload))
+    assert fetch.get_sprite("garchomp") == "https://example.com/garchomp.png"
+
+
+def test_get_sprite_missing_returns_none(monkeypatch):
+    payload = {"sprites": {"front_default": None}}
+    monkeypatch.setattr(fetch._session, "get", fake_get(payload))
+    assert fetch.get_sprite("some-form") is None

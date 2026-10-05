@@ -17,6 +17,7 @@ from pokedex.config import (
 )
 from pokedex.fetch import (
     get_all_pokemon_names,
+    get_sprite,
     get_stats,
     get_types,
     load_pokemon_cache,
@@ -58,6 +59,14 @@ def cached_candidates() -> dict[str, list[str]]:
         if sum(d["stats"].values()) >= MIN_BST
         and not any(tag in name for tag in ("-gmax", "-totem"))
     }
+
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+def cached_sprite(name: str) -> str | None:
+    try:
+        return get_sprite(name)
+    except requests.RequestException:
+        return None
 
 
 def color_multiplier(value):
@@ -159,7 +168,14 @@ with st.spinner("Fetching Pokémon data..."):
             st.stop()
 
 st.subheader("Team")
-st.write(", ".join(f"**{n}** ({' / '.join(t)})" for n, t in team.items()))
+cols = st.columns(MAX_TEAM_SIZE)
+for col, (name, types) in zip(cols, team.items(), strict=False):
+    with col:
+        sprite = cached_sprite(name)
+        if sprite:
+            st.image(sprite, width=96)
+        st.markdown(f"**{name.replace('-', ' ').title()}**")
+        st.caption(" / ".join(t.title() for t in types))
 
 st.subheader("Defense: weakness table")
 table = team_table(team, chart)
