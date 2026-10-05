@@ -10,7 +10,6 @@ Analyzes a Pokémon team's type weaknesses and coverage gaps, then ranks swaps t
 
 **[Try the live app →](https://pokemon-team-analyzer.streamlit.app/)**
 
-![App screenshot](<docs/screenshot.png>)
 
 ## Features
 
@@ -29,7 +28,7 @@ cd pokemon-team-analyzer
 python -m venv .venv
 # Windows: .venv\Scripts\activate   macOS/Linux: source .venv/bin/activate
 pip install -r requirements-dev.txt   # installs the app, dev tools, and `pokedex` in editable mode
-streamlit run <APP_FILE>.py
+streamlit run app.py
 ```
 
 Only need to run the app? `pip install -r requirements.txt` is enough.
