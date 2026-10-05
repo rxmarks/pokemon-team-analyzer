@@ -10,3 +10,9 @@ select = ["E", "F", "I"]
 
 [tool.coverage.run]
 omit = ["pokedex/*_ui.py"]
+
+[tool.mypy]
+python_version = "3.14"
+files = ["pokedex"]
+strict = true
+ignore_missing_imports = true

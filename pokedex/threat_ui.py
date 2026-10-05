@@ -3,19 +3,20 @@ import streamlit as st
 
 from pokedex.analysis import threat_report
 from pokedex.fetch import load_pokemon_cache, load_smogon_usage
+from pokedex.types import PokemonCache, Team, TypeChart, UsageData
 
 
 @st.cache_data
-def cached_usage() -> dict:
+def cached_usage() -> UsageData:
     return load_smogon_usage()
 
 
 @st.cache_data
-def cached_pokemon() -> dict:
+def cached_pokemon() -> PokemonCache:
     return load_pokemon_cache()
 
 
-def render_meta_threats(team: dict[str, list[str]], type_chart: dict) -> None:
+def render_meta_threats(team: Team, type_chart: TypeChart) -> None:
     usage = cached_usage()
     cache = cached_pokemon()
     st.subheader("Meta threats")
@@ -24,7 +25,9 @@ def render_meta_threats(team: dict[str, list[str]], type_chart: dict) -> None:
         "from Smogon usage stats."
     )
 
-    threats = {r["name"]: cache[r["name"]]["types"] for r in usage["top"] if r["name"] in cache}
+    threats: Team = {
+        r["name"]: cache[r["name"]]["types"] for r in usage["top"] if r["name"] in cache
+    }
     report = threat_report(team, threats, type_chart)
 
     usage_by_name = {r["name"]: r for r in usage["top"]}
@@ -37,5 +40,5 @@ def render_meta_threats(team: dict[str, list[str]], type_chart: dict) -> None:
     if dangers.empty:
         st.success("No major threats: your team has an answer to every top-30 Pokémon.")
     else:
-        st.warning(f"{len(dangers)} dangerous threats: " + ", ".join(dangers["threat"]))
+        st.warning(f"{len(dangers)} dangerous threats: " + ", ".join(dangers["threat"].tolist()))
     st.dataframe(df.drop(columns="danger"), hide_index=True)
