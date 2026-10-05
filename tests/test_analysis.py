@@ -1,18 +1,22 @@
 import pytest
 
 from pokedex.analysis import (
+    MATCHUP_SWAP_COLUMNS,
     best_stab_multiplier,
     coverage_gaps,
     matchup_label,
     matchup_score,
     matchup_table,
+    matchup_threat_pressure,
     member_coverage,
     member_profile,
     multiplier,
     opponent_threat_report,
     score_team,
+    suggest_matchup_swaps,
     suggest_swaps,
     team_badness,
+    team_matchup_balance,
     team_table,
     team_weak_total,
 )
@@ -242,3 +246,100 @@ def test_opponent_threat_report_with_empty_opponent_team_returns_empty_table(cha
         "weak_members",
         "answers",
     ]
+
+
+def test_matchup_threat_pressure_sums_opponent_report(chart):
+    team = {
+        "charizard": ["fire", "flying"],
+        "gyarados": ["water", "flying"],
+    }
+    opponents = {
+        "pikachu": ["electric"],
+    }
+
+    assert matchup_threat_pressure(team, opponents, chart) == 2
+
+
+def test_team_matchup_balance_favors_water_against_fire(chart):
+    team = {
+        "squirtle": ["water"],
+    }
+    opponents = {
+        "charmander": ["fire"],
+    }
+
+    assert team_matchup_balance(team, opponents, chart) > 0
+
+
+def test_matchup_swaps_empty_without_opponents(chart):
+    team = {
+        "squirtle": ["water"],
+    }
+    candidates = {
+        "pikachu": ["electric"],
+    }
+
+    result = suggest_matchup_swaps(team, candidates, {}, chart)
+
+    assert result.empty
+    assert list(result.columns) == MATCHUP_SWAP_COLUMNS
+
+
+def test_matchup_swaps_skip_existing_members(chart):
+    team = {
+        "squirtle": ["water"],
+        "bulbasaur": ["grass"],
+    }
+    candidates = {
+        "squirtle": ["water"],
+        "pikachu": ["electric"],
+    }
+    opponents = {
+        "charmander": ["fire"],
+    }
+
+    result = suggest_matchup_swaps(team, candidates, opponents, chart)
+
+    assert "squirtle" not in set(result["candidate"])
+
+
+def test_matchup_swaps_reduce_electric_pressure(chart):
+    team = {
+        "charizard": ["fire", "flying"],
+        "gyarados": ["water", "flying"],
+        "bulbasaur": ["grass", "poison"],
+    }
+    candidates = {
+        "excadrill": ["ground", "steel"],
+        "flareon": ["fire"],
+    }
+    opponents = {
+        "pikachu": ["electric"],
+    }
+
+    result = suggest_matchup_swaps(team, candidates, opponents, chart)
+    top = result.iloc[0]
+
+    assert top["candidate"] == "excadrill"
+    assert top["replaces"] in {"charizard", "gyarados"}
+    assert top["pressure_improvement"] > 0
+    assert top["threat_pressure"] < matchup_threat_pressure(team, opponents, chart)
+
+
+def test_matchup_swap_ranking_is_deterministic(chart):
+    team = {
+        "squirtle": ["water"],
+        "bulbasaur": ["grass"],
+    }
+    candidates = {
+        "pikachu": ["electric"],
+        "geodude": ["rock", "ground"],
+    }
+    opponents = {
+        "charmander": ["fire"],
+    }
+
+    first = suggest_matchup_swaps(team, candidates, opponents, chart)
+    second = suggest_matchup_swaps(team, candidates, opponents, chart)
+
+    assert first.equals(second)
