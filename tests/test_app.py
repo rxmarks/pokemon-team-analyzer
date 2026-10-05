@@ -77,3 +77,33 @@ def test_url_with_only_invalid_names_falls_back_to_default():
     at = run_app_with_team("missingno")
     assert not at.exception
     assert at.multiselect[0].value == list(FAKE_TYPES)
+
+
+PASTE = """\
+Chompy (Garchomp) (M) @ Choice Scarf
+- Earthquake
+
+Tyranitar @ Leftovers
+- Crunch
+
+Pikachu @ Light Ball
+- Thunderbolt
+"""
+
+
+def test_showdown_import_replaces_team():
+    at = run_app()
+    at.text_area(key="showdown_paste").input(PASTE)
+    at.button(key="import_btn").click().run()
+    assert not at.exception
+    assert at.multiselect[0].value == ["garchomp", "tyranitar"]
+    assert any("pikachu" in w.value for w in at.warning)
+
+
+def test_showdown_import_with_no_valid_pokemon_keeps_team():
+    at = run_app()
+    at.text_area(key="showdown_paste").input("Missingno @ Nothing")
+    at.button(key="import_btn").click().run()
+    assert not at.exception
+    assert at.multiselect[0].value == list(FAKE_TYPES)
+    assert any("Couldn't find" in e.value for e in at.error)

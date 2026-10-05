@@ -17,6 +17,7 @@ from pokedex.fetch import (
     load_type_chart,
 )
 from pokedex.move_ui import render_move_coverage
+from pokedex.showdown import parse_showdown
 from pokedex.threat_ui import render_meta_threats
 
 st.set_page_config(page_title="Pokémon Team Analyzer", layout="wide")
@@ -99,12 +100,41 @@ def team_from_url(valid: list[str]) -> list[str]:
     return cleaned[:6] or DEFAULT_TEAM
 
 
+def import_showdown() -> None:
+    mons = parse_showdown(st.session_state.get("showdown_paste", ""))
+    valid = set(all_names)
+    found = list(dict.fromkeys(m.species for m in mons if m.species in valid))
+    st.session_state["import_skipped"] = [m.species for m in mons if m.species not in valid]
+    st.session_state["import_ok"] = bool(found)
+    if found:
+        st.session_state["team"] = found[:6]
+
+
+if "team" not in st.session_state:
+    st.session_state["team"] = team_from_url(all_names)
+
 names = st.multiselect(
     "Pick up to 6 Pokémon (type to search)",
     options=all_names,
-    default=team_from_url(all_names),
     max_selections=6,
+    key="team",
 )
+
+with st.expander("Import from Pokémon Showdown"):
+    st.text_area(
+        "Paste a team export (Teambuilder → Import/Export)",
+        key="showdown_paste",
+        height=200,
+    )
+    st.button("Import team", key="import_btn", on_click=import_showdown)
+    if "import_ok" in st.session_state:
+        if st.session_state["import_ok"]:
+            st.success("Team imported.")
+        else:
+            st.error("Couldn't find any Pokémon in that paste.")
+        skipped = st.session_state.get("import_skipped")
+        if skipped:
+            st.warning("Skipped (not found in PokeAPI): " + ", ".join(skipped))
 
 if names:
     st.query_params["team"] = ",".join(names)
