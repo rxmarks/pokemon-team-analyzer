@@ -1,10 +1,15 @@
 import pytest
 
 from pokedex.analysis import (
+    best_stab_multiplier,
     coverage_gaps,
+    matchup_label,
+    matchup_score,
+    matchup_table,
     member_coverage,
     member_profile,
     multiplier,
+    opponent_threat_report,
     score_team,
     suggest_swaps,
     team_badness,
@@ -98,3 +103,46 @@ def test_fast_score_matches_pandas_version(chart):
         team_badness(SAMPLE_TEAM, chart),
         team_weak_total(SAMPLE_TEAM, chart),
     )
+
+
+def test_best_stab_multiplier_uses_best_native_type(chart):
+    assert best_stab_multiplier(["fire", "flying"], ["grass", "steel"], chart) == 4.0
+
+
+def test_matchup_score_favors_water_into_fire(chart):
+    assert matchup_score(["water"], ["fire"], chart) > 0
+
+
+def test_matchup_score_is_risky_for_fire_into_water(chart):
+    assert matchup_score(["fire"], ["water"], chart) < 0
+
+
+def test_matchup_label():
+    assert matchup_label(1.0) == "Favorable"
+    assert matchup_label(0.0) == "Even"
+    assert matchup_label(-1.0) == "Risky"
+
+
+def test_matchup_table_has_user_rows_and_opponent_columns(chart):
+    team = {"squirtle": ["water"], "bulbasaur": ["grass"]}
+    opponent = {"charmander": ["fire"], "pikachu": ["electric"]}
+
+    table = matchup_table(team, opponent, chart)
+
+    assert list(table.index) == ["squirtle", "bulbasaur"]
+    assert list(table.columns) == ["charmander", "pikachu"]
+    assert table.loc["squirtle", "charmander"] == "Favorable"
+
+
+def test_opponent_threat_report_shows_answers(chart):
+    team = {"squirtle": ["water"], "bulbasaur": ["grass"]}
+    opponent = {"charmander": ["fire"]}
+
+    report = opponent_threat_report(team, opponent, chart)
+
+    assert report.loc[0, "opponent"] == "charmander"
+    assert report.loc[0, "threatens"] == 1
+    assert report.loc[0, "answered_by"] == 1
+    assert report.loc[0, "threat_score"] == 0
+    assert report.loc[0, "weak_members"] == "bulbasaur"
+    assert report.loc[0, "answers"] == "squirtle"
