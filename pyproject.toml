@@ -1,3 +1,38 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pokemon-team-analyzer"
+version = "0.9.0"
+description = "Analyzes a Pokémon team's type weaknesses and coverage gaps, then ranks swaps that would improve it."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Roman Marks", email = "rxmarks@unc.edu" }]
+requires-python = ">=3.12"
+dependencies = [
+    "pandas>=3.0",
+    "requests>=2.34",
+    "streamlit>=1.64",
+]
+keywords = ["pokemon", "streamlit", "pokeapi", "data-analysis"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Repository = "https://github.com/rxmarks/pokemon-team-analyzer"
+
+[tool.setuptools]
+packages = ["pokedex"]
+
+[tool.setuptools.package-data]
+pokedex = ["py.typed"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
