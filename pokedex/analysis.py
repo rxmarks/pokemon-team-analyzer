@@ -220,16 +220,16 @@ def matchup_table(
     opponent_team: Team,
     type_chart: TypeChart,
 ) -> pd.DataFrame:
-    """Rows are user-team members, columns are opponents, values are matchup labels."""
-    return pd.DataFrame(
-        {
-            opponent_name: {
-                own_name: matchup_label(matchup_score(own_types, opponent_types, type_chart))
-                for own_name, own_types in team.items()
-            }
-            for opponent_name, opponent_types in opponent_team.items()
-        }
-    )
+    """Rows are user-team members; columns are opponents; values are matchup labels."""
+    table = pd.DataFrame(index=list(team))
+
+    for opponent_name, opponent_types in opponent_team.items():
+        table[opponent_name] = [
+            matchup_label(matchup_score(own_types, opponent_types, type_chart))
+            for own_types in team.values()
+        ]
+
+    return table
 
 
 def threat_report(
@@ -259,6 +259,16 @@ def threat_report(
             }
         )
     return report
+
+
+OPPONENT_THREAT_COLUMNS = [
+    "opponent",
+    "threatens",
+    "answered_by",
+    "threat_score",
+    "weak_members",
+    "answers",
+]
 
 
 def opponent_threat_report(
@@ -291,8 +301,11 @@ def opponent_threat_report(
             }
         )
 
+    if not rows:
+        return pd.DataFrame(columns=OPPONENT_THREAT_COLUMNS)
+
     return (
-        pd.DataFrame(rows)
+        pd.DataFrame(rows, columns=OPPONENT_THREAT_COLUMNS)
         .sort_values(
             ["threat_score", "threatens", "opponent"],
             ascending=[False, False, True],
