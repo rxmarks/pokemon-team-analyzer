@@ -80,6 +80,10 @@ def color_multiplier(value):
     return ""
 
 
+def display_name(name: str) -> str:
+    return name.replace("-", " ").title()
+
+
 st.title("Pokémon Team Analyzer")
 st.caption("Type-coverage analysis and swap suggestions. Data from PokeAPI.")
 
@@ -134,6 +138,7 @@ names = st.multiselect(
     options=all_names,
     max_selections=MAX_TEAM_SIZE,
     key="team",
+    format_func=display_name,
 )
 
 with st.expander("Import from Pokémon Showdown"):
@@ -179,43 +184,13 @@ for col, (name, types) in zip(cols, team.items(), strict=False):
         sprite = cached_sprite(name)
         if sprite:
             st.image(sprite, width=96)
-        st.markdown(f"**{name.replace('-', ' ').title()}**")
+        st.markdown(f"**{display_name(name)}**")
         st.caption(" / ".join(t.title() for t in types))
 
-st.subheader("Defense: weakness table")
 table = team_table(team, chart)
 member_cols = list(team)
-styled = table.style.map(color_multiplier, subset=member_cols).format(
-    "{:g}", subset=member_cols + ["total"]
-)
-st.dataframe(styled, width="stretch")
-st.caption("Red = weak (dark red = 4x), green = resists, blue = immune.")
-
-with st.expander("How to read this table"):
-    st.markdown(
-        "Each row is an attack type and each column is one of your Pokémon. "
-        "Cells show the damage multiplier: 4 and 2 mean weak, 0.5 and 0.25 mean "
-        "resists, 0 means immune. 'total' sums the row across your team."
-    )
-
-st.subheader("Offense: coverage gaps")
 gaps = coverage_gaps(team, chart)
-if gaps:
-    st.warning("No super-effective coverage against: " + ", ".join(sorted(gaps)))
-else:
-    st.success("Your team's types hit every type super-effectively.")
 
-with st.expander("How to read coverage gaps"):
-    st.markdown(
-        "This checks only your Pokémon's own types (STAB). A gap means no "
-        "team member's type is super-effective against that type. The move "
-        "coverage section below accounts for actual moves."
-    )
-
-render_move_coverage(team, chart)
-render_meta_threats(team, chart)
-
-st.subheader("Stats: role check")
 try:
     with st.spinner("Fetching base stats..."):
         team_stats = {n: cached_stats(n) for n in team}
@@ -223,43 +198,83 @@ except requests.RequestException:
     st.error("Couldn't load base stats from PokeAPI. Try again in a moment.")
     st.stop()
 
-st.dataframe(pd.DataFrame(team_stats).T, width="stretch")
-warnings = stat_warnings(team_stats)
-if warnings:
-    for w in warnings:
-        st.warning(w)
-else:
-    st.success("Team has speed, physical, and special attackers covered.")
+shared_weak = int(((table[member_cols] >= 2).sum(axis=1) >= 2).sum())
+quad_weak = int((table[member_cols] >= 4).to_numpy().sum())
 
-with st.expander("How to read the stat check"):
-    st.markdown(
-        "Rows are your Pokémon and columns are base stats. Warnings flag a "
-        "team that lacks fast members, or leans entirely physical or special, "
-        "which makes it easy to wall."
-    )
+m1, m2, m3, m4 = st.columns(4)
+m1.metric(
+    "Team badness",
+    team_badness(team, chart),
+    help="Problem types + coverage gaps. Lower is better.",
+)
+m2.metric(
+    "Shared weaknesses", shared_weak, help="Attack types that hit 2+ members super-effectively."
+)
+m3.metric("Coverage gaps", len(gaps), help="Types no member's type hits super-effectively.")
+m4.metric("4x weaknesses", quad_weak, help="Member/type pairs taking quadruple damage.")
 
-st.subheader("Swap suggestions")
-st.write(
-    f"Current team badness: **{team_badness(team, chart)}** "
-    "(problem types + coverage gaps, lower is better)"
+defense, offense, moves, threats, stats_tab, swaps_tab = st.tabs(
+    ["Defense", "Offense", "Moves", "Meta threats", "Stats", "Swaps"]
 )
 
-candidates = cached_candidates()
-if not candidates:
-    st.error("No candidates loaded. Check that data/pokemon.json exists and isn't empty.")
-    st.stop()
-
-st.caption(f"Searching {len(candidates)} Pokémon with base stat total {MIN_BST}+.")
-
-with st.spinner("Ranking swap candidates..."):
-    swaps = suggest_swaps(team, candidates, chart)
-st.dataframe(swaps, width="stretch", hide_index=True)
-
-with st.expander("How to read swap suggestions"):
-    st.markdown(
-        "Each row replaces one team member with a candidate and shows the new "
-        "team badness. Badness counts types that hit 2+ members super-"
-        "effectively plus offensive coverage gaps. Lower is better."
+with defense:
+    styled = table.style.map(color_multiplier, subset=member_cols).format(
+        "{:g}", subset=member_cols + ["total"]
     )
+    st.dataframe(styled, width="stretch")
+    st.caption("Red = weak (dark red = 4x), green = resists, blue = immune.")
+    with st.expander("How to read this table"):
+        st.markdown(
+            "Each row is an attack type and each column is one of your Pokémon. "
+            "Cells show the damage multiplier: 4 and 2 mean weak, 0.5 and 0.25 mean "
+            "resists, 0 means immune. 'total' sums the row across your team."
+        )
 
-render_loadout_suggestions(team, chart, team_stats)
+with offense:
+    if gaps:
+        st.warning("No super-effective coverage against: " + ", ".join(sorted(gaps)))
+    else:
+        st.success("Your team's types hit every type super-effectively.")
+    with st.expander("How to read coverage gaps"):
+        st.markdown(
+            "This checks only your Pokémon's own types (STAB). A gap means no "
+            "team member's type is super-effective against that type. The Moves "
+            "tab accounts for actual moves."
+        )
+
+with moves:
+    render_move_coverage(team, chart)
+    render_loadout_suggestions(team, chart, team_stats)
+
+with threats:
+    render_meta_threats(team, chart)
+
+with stats_tab:
+    st.dataframe(pd.DataFrame(team_stats).T, width="stretch")
+    warnings = stat_warnings(team_stats)
+    if warnings:
+        for w in warnings:
+            st.warning(w)
+    else:
+        st.success("Team has speed, physical, and special attackers covered.")
+    with st.expander("How to read the stat check"):
+        st.markdown(
+            "Rows are your Pokémon and columns are base stats. Warnings flag a "
+            "team that lacks fast members, or leans entirely physical or special, "
+            "which makes it easy to wall."
+        )
+
+with swaps_tab:
+    candidates = cached_candidates()
+    if not candidates:
+        st.error("No candidates loaded. Check that data/pokemon.json exists and isn't empty.")
+        st.stop()
+    st.caption(f"Searching {len(candidates)} Pokémon with base stat total {MIN_BST}+.")
+    with st.spinner("Ranking swap candidates..."):
+        swaps = suggest_swaps(team, candidates, chart)
+    st.dataframe(swaps, width="stretch", hide_index=True)
+    with st.expander("How to read swap suggestions"):
+        st.markdown(
+            "Each row replaces one team member with a candidate and shows the new "
+            "team badness. Lower is better."
+        )
