@@ -1,207 +1,85 @@
-[![tests](https://github.com/rxmarks/pokemon-team-analyzer/actions/workflows/tests.yml/badge.svg)](https://github.com/rxmarks/pokemon-team-analyzer/actions/workflows/tests.yml)
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://pokemon-team-analyzer.streamlit.app/)
 # Pokémon Team Analyzer
 
-A deployed Python web app that analyzes a Pokémon team’s defensive type weaknesses, offensive type coverage, and potential swap improvements.
+[![Tests](https://github.com/rxmarks/pokemon-team-analyzer/actions/workflows/tests.yml/badge.svg)](https://github.com/rxmarks/pokemon-team-analyzer/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/gh/rxmarks/pokemon-team-analyzer/graph/badge.svg)](https://codecov.io/gh/rxmarks/pokemon-team-analyzer)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://pokemon-team-analyzer.streamlit.app/)
+![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Live app:** [pokemon-team-analyzer.streamlit.app](https://pokemon-team-analyzer.streamlit.app/)
+Analyzes a Pokémon team's type weaknesses and coverage gaps, then ranks swaps that would improve it.
 
-![GitHub Actions tests](https://github.com/rxmarks/pokemon-team-analyzer/actions/workflows/tests.yml/badge.svg)
+**[Try the live app →](https://pokemon-team-analyzer.streamlit.app/)**
 
-![Pokémon Team Analyzer screenshot](docs/app-screenshot.png)
+![App screenshot](<docs/screenshot.png>)
 
-## What it does
+## Features
 
-Search for and select up to six Pokémon to analyze a team across the full 18-type Pokémon chart.
+- **Defensive type table:** Shows how much damage each team member takes from all 18 attacking types, and flags shared weaknesses.
+- **Offensive coverage gaps:** Lists the types your team can't hit super-effectively.
+- **Ranked swap suggestions:** Scores possible replacements by how much each one would reduce the team's weaknesses and fill its coverage gaps.
+- **Move-based coverage:** Uses up to 4 actual moves per Pokémon instead of only its own types, so coverage reflects what the team can really hit.
+- **Base-stat checks:** Flags teams that lean too heavily toward physical or special attackers, or lack speed or bulk.
+- **Meta threats table:** Shows how your team holds up against the 30 most-used Pokémon from Smogon usage stats.
 
-### Defensive weakness table
+## Quick start
 
-The app calculates how much damage each attack type does to every team member.
-
-- Shows each member's multiplier against all 18 attack types
-- Counts how many team members are weak to, resist, or are immune to each attack type
-- Multiplies dual-type matchups correctly
-
-For example:
-
-- Ice against Dragonite (`Dragon/Flying`) is \(2 \times 2 = 4\)× damage
-- Ground against Aerodactyl (`Rock/Flying`) is \(1 \times 0 = 0\)× damage
-
-### Offensive coverage gaps
-
-The app checks which defending types the team cannot hit super-effectively using any of the team members’ own types.
-
-For the default sample team, Normal is the only coverage gap because none of its types are Fighting-type.
-
-### Move-based coverage
-
-Type-based coverage only checks each Pokémon's own types. In real battles, coverage comes from moves. The app lets you pick up to 4 moves per Pokémon from its actual learnset, then checks which types those moves can't hit super-effectively. Status moves (like Swords Dance) are hidden because they deal no damage.
-
-For the default team, giving Tyranitar Close Combat (Fighting) closes the Normal gap that type-based coverage can't fix.
-
-Move data for all 937 moves is cached locally in `data/moves.json` (built by `scripts/build_move_cache.py`). Learnsets are fetched from PokeAPI and cached by the app.
-
-### Meta threats
-
-The app tests your team against the top 30 Pokémon in Smogon's Gen 9 OU usage stats (1695+ rating, August 2026). For each threat it shows:
-
-- How many team members are weak to its types
-- How many team members can hit it super-effectively
-
-A threat is flagged as dangerous if nobody on the team can hit it super-effectively, or if 3+ members are weak to it.
-
-Usage data is saved in `data/smogon_usage.json` (built by `scripts/build_smogon_cache.py`). To update to a newer month, change `MONTH` in the script and rerun it.
-
-### Swap suggestions
-
-The app evaluates candidate replacements for every member of the team and ranks the best swaps.
-
-Each candidate is tested in all six team slots. The app searches every Pokémon with a base stat
-total of 500+ (487 candidates), checking about 6 × N possible replacement teams.
-
-
-The ranking uses:
-
-1. **Team badness** — Number of problem attack types plus offensive coverage gaps
-2. **Weakness total** — Used as a tiebreaker; fewer total type weaknesses ranks higher
-
-For the default team, replacing Dragonite with any Bug/Steel Pokémon (such as Scizor, Durant, or Genesect) lowers the badness score from 4 to 2 while adding only one new weakness, the lowest of any candidate.
-
-## Performance
-
-Searching the full Pokémon pool originally took about 15 seconds, because every candidate
-team rebuilt two pandas tables from scratch.
-
-I rewrote the scoring to compute each Pokémon's 18 type multipliers once and reuse them,
-using plain Python counting instead of building DataFrames. The same search now runs in about 5 seconds
-(roughly 3x faster). The existing pytest suite and a new equivalence test confirm the
-faster version returns identical rankings.
-
-### Stat role check
-
-The app pulls each team member's base stats and flags missing roles:
-
-- No fast Pokémon (no member with base Speed 100+)
-- No special attackers (every member's Attack is higher than its Special Attack)
-- No physical attackers (every member's Special Attack is higher than its Attack)
-
-## Performance
-
-The first version of the swap search rebuilt two pandas tables for every candidate team.
-Across all 1,351 Pokémon (about 8,100 teams), that took **36.4 seconds**.
-
-The optimized version computes each Pokémon's 18 type multipliers once and reuses them,
-scoring teams with plain Python counting instead of building DataFrames. The same search
-now runs in **0.12 seconds**, roughly **300x faster**, and returns identical rankings,
-confirmed by the existing pytest suite plus an equivalence test.
-
-Rankings are type-based, so Pokémon with identical typings (e.g., Durant, Escavalier,
-Forretress, Genesect, Scizor, all Bug/Steel) tie and are ordered alphabetically.
-
-## Example team
-
-The default team is:
-
-```text
-Dragonite, Gyarados, Garchomp, Ferrothorn, Togekiss, Tyranitar
-```
-
-Its biggest defensive issue is Ice:
-
-- Dragonite: 4× weak
-- Garchomp: 4× weak
-- Togekiss: 2× weak
-- No team member resists Ice
-
-## Tech stack
-
-- Python
-- Streamlit
-- pandas
-- pytest
-- GitHub Actions
-- PokeAPI
-
-## Project structure
-
-```text
-pokemon-team-analyzer/
-├── app.py                     # Streamlit web interface
-├── main.py                    # Command-line demonstration
-├── requirements.txt           # Python dependencies
-├── pyproject.toml             # pytest configuration
-├── data/
-│   └── types.json             # Cached 18-type chart from PokeAPI
-├── pokedex/
-│   ├── fetch.py               # PokeAPI requests and cached type-chart loading
-│   └── analysis.py            # Type math, coverage logic, and swap ranking
-├── tests/
-│   └── test_analysis.py       # pytest test suite
-└── .github/
-    └── workflows/
-        └── tests.yml          # CI workflow
-```
-
-The project separates data fetching from analysis logic. That keeps the type calculations testable without needing live API requests.
-
-## Run locally
-
-Clone the repository:
-
-```powershell
+```bash
 git clone [https://github.com/rxmarks/pokemon-team-analyzer.git](https://github.com/rxmarks/pokemon-team-analyzer.git)
 cd pokemon-team-analyzer
-```
-Requires Python 3.14+.
-
-Create and activate a virtual environment:
-
-```powershell
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+# Windows: .venv\Scripts\activate   macOS/Linux: source .venv/bin/activate
+pip install -r requirements-dev.txt   # installs the app, dev tools, and `pokedex` in editable mode
+streamlit run <APP_FILE>.py
 ```
 
-Install dependencies:
+Only need to run the app? `pip install -r requirements.txt` is enough.
 
-```powershell
-python -m pip install -r requirements.txt
+## Architecture
+
+```mermaid
+flowchart LR
+    A[PokeAPI] -->|fetch + cache| B[Type chart cache]
+    S[Smogon usage stats] -->|scripts/build_smogon_cache.py| C[Top-30 meta cache]
+    B --> D[pokedex package<br/>analysis, multipliers, coverage, swaps]
+    C --> D
+    D --> E[Streamlit UI]
+    F[Scheduled GitHub Action] -->|refreshes| C
 ```
 
-Run the Streamlit app:
+- **`pokedex/`:** All the analysis logic: type multipliers, the team table, coverage gaps, swap ranking, and stat checks. It doesn't depend on Streamlit, so it can be tested and imported on its own. It's an installable package with type hints (`py.typed`).
+- **Streamlit app:** A thin UI layer that calls `pokedex` and displays the results.
+- **`scripts/build_smogon_cache.py`:** Builds the cached meta-threats data.
+- **Caching:** The type chart and Smogon data are saved locally, so the app doesn't call PokeAPI on every interaction.
 
-```powershell
-python -m streamlit run app.py
+## Engineering highlights
+
+- **Testing:** pytest suite with about 98% coverage of the core package (the UI is excluded), plus property-based tests with Hypothesis. CI fails if coverage drops below a set minimum.
+- **Mocked network calls:** PokeAPI is replaced with `monkeypatch` stubs in tests, so the suite is fast, reliable, and works offline.
+- **CI:** GitHub Actions runs the tests on Python 3.12, 3.13, and 3.14, with Ruff linting and mypy type checks. Coverage is uploaded to Codecov.
+- **Automated data refresh:** A scheduled workflow rebuilds the Smogon meta cache so the threats table stays current.
+- **Packaging:** Metadata lives in `pyproject.toml`, runtime and dev dependencies are split into separate files, and the package installs in editable mode.
+- **Code quality:** pre-commit hooks run Ruff (lint and format) before each commit.
+- **Error handling:** API failures and invalid Pokémon names show friendly messages instead of stack traces.
+
+## Development
+
+```bash
+pre-commit install                                    # one-time setup
+python -m pytest --cov=pokedex --cov-fail-under=90    # tests + coverage
+ruff check . && ruff format --check .                 # lint + formatting check
+mypy                                                  # type check
 ```
 
-Run the tests:
+Changes go through pull requests. CI must pass before a PR is merged into `main`.
 
-```powershell
-python -m pytest -v
-```
+## Limitations
 
-## Testing and CI
+- **Type-based analysis:** It doesn't account for abilities like Levitate, held items, EVs/IVs, Tera types, or damage calculations.
+- **Simple swap scoring:** Swaps are ranked by type and coverage math, not by competitive viability or team synergy.
+- **Meta data is a snapshot:** The threats table covers the top 30 Pokémon from one Smogon format and is only as current as the last scheduled refresh.
+- **Moves count by type only:** Move power, accuracy, and category affect coverage only through the move's type.
+- **PokeAPI dependency:** The first run, or a run with an empty cache, needs network access.
 
-The project includes pytest tests for:
+## License
 
-- Dual-type multipliers, including 4× weaknesses and immunities
-- Type-chart completeness
-- The sample team's Ice weakness
-- Offensive coverage-gap logic
-- Team badness scoring
-- Swap-ranking behavior
-- Stat role-check logic, including the Speed 100 boundary
-- API fetch logic, tested with a mocked response
-
-GitHub Actions runs the pytest suite automatically on every push to `main`.
-
-## Data source
-
-Type data and Pokémon typings come from [PokeAPI](https://pokeapi.co/), a free public Pokémon REST API.
-
-The complete type chart is cached locally in `data/types.json`, so the app does not need to download all 18 type relationships every time it runs.
-
-## Future improvements
-
-- Compare teams against common competitive Pokémon usage data
-- Use each threat's common moves (from Smogon moveset data) instead of just its types
-- Let users choose the format (e.g., Gen 9 UU, VGC)
+[MIT](LICENSE) © Roman Marks
