@@ -11,6 +11,7 @@ import pokedex.fetch as fetch
 import pokedex.loadout_ui as loadout_ui
 import pokedex.move_ui as move_ui
 from pokedex import threat_ui
+from pokedex.showdown import parse_showdown
 from pokedex.team_files import dump_team, load_team
 from pokedex.team_state import TeamMember, TeamState
 from pokedex.workspace_files import (
@@ -1778,3 +1779,145 @@ def test_applied_loadout_is_in_team_and_workspace_downloads(
     assert team.members[0].moves == ("earthquake", "ice-beam")
     assert team.members[1].moves == ("ice-beam",)
     assert workspace.team == team
+
+
+@pytest.fixture
+def captured_showdown_download(monkeypatch):
+    downloads = []
+    original_download_button = st.download_button
+
+    def capture_download(*args, **kwargs):
+        if kwargs.get("key") == "download_showdown":
+            downloads.append(kwargs["data"])
+        return original_download_button(*args, **kwargs)
+
+    monkeypatch.setattr(st, "download_button", capture_download)
+    return downloads
+
+
+def test_showdown_download_includes_manual_selected_moves(
+    monkeypatch,
+    captured_showdown_download,
+):
+    monkeypatch.setattr(
+        move_ui,
+        "cached_learnable_moves",
+        lambda name: ["earthquake", "swords-dance", "ice-beam"],
+    )
+    monkeypatch.setattr(
+        move_ui,
+        "cached_move_cache",
+        lambda: {
+            "earthquake": {
+                "type": "ground",
+                "damage_class": "physical",
+                "power": 100,
+            },
+            "swords-dance": {
+                "type": "normal",
+                "damage_class": "status",
+                "power": None,
+            },
+            "ice-beam": {
+                "type": "ice",
+                "damage_class": "special",
+                "power": 90,
+            },
+        },
+    )
+
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["swords-dance", "earthquake"]).run()
+    at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
+
+    assert not at.exception
+
+    parsed = parse_showdown(captured_showdown_download[-1])
+
+    assert [mon.species for mon in parsed] == ["garchomp", "tyranitar"]
+    assert parsed[0].moves == ["swords-dance", "earthquake"]
+    assert parsed[1].moves == ["ice-beam"]
+
+
+def test_showdown_download_includes_imported_moves(
+    captured_showdown_download,
+):
+    at = run_app()
+    at.text_area(key="showdown_paste").input(PASTE)
+    at.button(key="import_btn").click().run()
+
+    assert not at.exception
+
+    parsed = parse_showdown(captured_showdown_download[-1])
+
+    assert [mon.species for mon in parsed] == ["garchomp", "tyranitar"]
+    assert parsed[0].moves == ["earthquake"]
+    assert parsed[1].moves == ["crunch"]
+
+
+def test_showdown_download_includes_applied_loadout(
+    fixed_loadouts,
+    captured_showdown_download,
+):
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
+
+    at.button(key="preview_loadout_garchomp").click().run()
+    at.button(key="confirm_loadout").click().run()
+
+    assert not at.exception
+
+    parsed = parse_showdown(captured_showdown_download[-1])
+
+    assert parsed[0].species == "garchomp"
+    assert parsed[0].moves == ["earthquake", "ice-beam"]
+    assert parsed[1].species == "tyranitar"
+    assert parsed[1].moves == ["ice-beam"]
+
+
+@pytest.mark.parametrize(
+    "failed_names",
+    [
+        pytest.param({"tyranitar"}, id="partial-type-failure"),
+        pytest.param(
+            {"garchomp", "tyranitar"},
+            id="all-type-lookups-fail",
+        ),
+    ],
+)
+def test_showdown_download_preserves_team_when_types_fail(
+    monkeypatch,
+    captured_showdown_download,
+    failed_names,
+):
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
+
+    def lookup_types(name, cache):
+        if name in failed_names:
+            raise requests.ConnectionError("offline")
+        return FAKE_TYPES[name]
+
+    monkeypatch.setattr(fetch, "types_cache_first", lookup_types)
+    st.cache_data.clear()
+    at.run()
+
+    assert not at.exception
+
+    parsed = parse_showdown(captured_showdown_download[-1])
+
+    assert [mon.species for mon in parsed] == ["garchomp", "tyranitar"]
+    assert parsed[0].moves == ["earthquake"]
+    assert parsed[1].moves == ["ice-beam"]
+    assert any("Couldn't load" in warning.value for warning in at.warning)
+
+
+def test_showdown_download_disabled_for_empty_team(
+    captured_showdown_download,
+):
+    at = run_app_with_team("garchomp")
+    at.multiselect(key="team").set_value([]).run()
+
+    assert not at.exception
+    assert captured_showdown_download[-1] == ""

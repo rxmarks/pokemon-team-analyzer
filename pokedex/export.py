@@ -1,22 +1,35 @@
-"""Export helpers for sharing Pokémon teams."""
+"""Export helpers for sharing supported Pokémon team builds."""
 
+from pokedex.display import display_name
+from pokedex.team_state import TeamState
 from pokedex.types import Team
 
 
-def showdown_export(team: Team, move_sets: dict[str, list[str]] | None = None) -> str:
-    """Return a Pokémon Showdown-compatible team export.
+def showdown_export(
+    team: Team | TeamState,
+    move_sets: dict[str, list[str]] | None = None,
+) -> str:
+    """Return species and supplied moves in Showdown-style text.
 
-    Suggested moves are included when supplied. The export intentionally leaves
-    items, abilities, EVs, and natures blank for the user to customize.
+    TeamState exports its current selected moves. Legacy type mappings
+    optionally accept a separate move mapping.
+
+    Items, abilities, EVs, IVs, natures, and legality checks are not included.
     """
-    move_sets = move_sets or {}
     blocks: list[str] = []
 
-    for name in team:
-        display = name.replace("-", " ").title()
-        moves = move_sets.get(name, [])
-        lines = [display]
-        lines.extend(f"- {move.replace('-', ' ').title()}" for move in moves)
+    if isinstance(team, TeamState):
+        if move_sets is not None:
+            raise ValueError("Do not supply separate move sets when exporting a TeamState.")
+
+        entries = [(member.species, member.moves) for member in team.members]
+    else:
+        supplied_moves = move_sets if move_sets is not None else {}
+        entries = [(name, tuple(supplied_moves.get(name, []))) for name in team]
+
+    for species, moves in entries:
+        lines = [display_name(species)]
+        lines.extend(f"- {display_name(move)}" for move in moves)
         blocks.append("\n".join(lines))
 
-    return "\n\n".join(blocks) + "\n"
+    return "\n\n".join(blocks) + "\n" if blocks else ""
