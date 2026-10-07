@@ -154,6 +154,11 @@ def clear_swap_history() -> None:
     reconcile_team(st.session_state)
 
 
+def replacement_options_changed() -> None:
+    """Dismiss a preview without changing the team or its undo history."""
+    st.session_state.pop("pending_swap", None)
+
+
 def locks_changed() -> None:
     """Refresh the snapshot and dismiss a preview when locks change."""
     st.session_state.pop("pending_swap", None)
@@ -313,6 +318,44 @@ if "locked_members" not in st.session_state:
     st.session_state["locked_members"] = []
 
 reconcile_team(st.session_state)
+
+with st.expander("Replacement options"):
+    candidate_source = st.radio(
+        "Which Pokémon can be suggested as replacements?",
+        options=["Current recommendation pool", "My available Pokémon"],
+        key="candidate_source",
+        on_change=replacement_options_changed,
+    )
+
+    available_pokemon = st.multiselect(
+        "My available Pokémon",
+        options=all_names,
+        key="available_pokemon",
+        format_func=display_name,
+        on_change=replacement_options_changed,
+        help=(
+            "Choose Pokémon you own, can obtain, or want to consider. "
+            "This limits replacements only; it does not change your team."
+        ),
+    )
+
+    if candidate_source == "My available Pokémon":
+        st.caption(
+            f"{len(available_pokemon)} Pokémon selected. "
+            "Your selected pool is not filtered by base-stat total or form tags. "
+            "Availability and battle legality are not verified."
+        )
+    else:
+        st.caption(
+            f"Using locally cached candidates with base stat total {MIN_BST}+. "
+            "Gigantamax and Totem forms are excluded. "
+            "Your available-Pokémon selections are retained but not applied."
+        )
+
+    st.caption(
+        "Replacement settings are session preferences and are not included in downloaded team JSON."
+    )
+
 
 names = st.multiselect(
     "Pick up to 6 Pokémon (type to search)",
@@ -549,10 +592,31 @@ except requests.RequestException:
     st.error("Couldn't load base stats from PokeAPI. Try again in a moment.")
     st.stop()
 
-candidates = cached_candidates()
-if not candidates:
-    st.error("No candidates loaded. Check that data/pokemon.json exists and isn't empty.")
-    st.stop()
+if candidate_source == "My available Pokémon":
+    replacement_names = [name for name in available_pokemon if name not in names]
+
+    with st.spinner("Loading available replacement Pokémon..."):
+        candidates = load_team_types(
+            replacement_names,
+            "your available replacement pool",
+        )
+
+    if not available_pokemon:
+        st.warning(
+            "Choose Pokémon in Replacement options to receive swap suggestions. "
+            "Your current team analysis is still available."
+        )
+else:
+    candidates = cached_candidates()
+
+    if not candidates:
+        st.warning(
+            "The current recommendation pool is empty. "
+            "Choose My available Pokémon in Replacement options, "
+            "or check the local Pokémon cache."
+        )
+
+eligible_replacement_count = sum(name not in team for name in candidates)
 
 with st.spinner("Ranking swap candidates..."):
     swaps = suggest_swaps(
@@ -951,12 +1015,16 @@ with stats_tab:
         )
 
 with swaps_tab:
-    st.caption(f"Searching {len(candidates)} Pokémon with base stat total {MIN_BST}+.")
-
+    st.caption(
+        f"Searching {eligible_replacement_count} eligible replacement Pokémon "
+        f"from {candidate_source.lower()}."
+    )
     if all_members_locked:
         st.info("All team members are locked. Unlock one to see swap suggestions.")
-    elif swaps.empty:
+    elif eligible_replacement_count == 0:
         st.info("No eligible single swaps are available.")
+    elif swaps.empty:
+        st.info("No swap suggestions were produced for the selected replacements.")
     else:
         shown = swaps.copy()
         shown.insert(0, "sprite", [cached_sprite(name) for name in shown[SWAP_IN]])
