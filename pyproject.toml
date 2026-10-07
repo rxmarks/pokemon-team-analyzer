@@ -36,6 +36,9 @@ pokedex = ["py.typed"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "app: Streamlit AppTest integration and UI tests",
+]
 
 [tool.ruff]
 line-length = 100

@@ -21,6 +21,7 @@ from pokedex.workspace_files import (
     load_workspace,
 )
 
+pytestmark = pytest.mark.app
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 
 
