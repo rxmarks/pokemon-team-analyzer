@@ -343,3 +343,103 @@ def test_matchup_swap_ranking_is_deterministic(chart):
     second = suggest_matchup_swaps(team, candidates, opponents, chart)
 
     assert first.equals(second)
+
+
+def test_matchup_swaps_equal_metrics_are_not_improvement(chart):
+    team = {"z-original": ["water"]}
+    candidates = {"a-alternative": ["water"]}
+    opponents = {"charmander": ["fire"]}
+
+    result = suggest_matchup_swaps(team, candidates, opponents, chart)
+    row = result.iloc[0]
+
+    assert not bool(row["is_improvement"])
+    assert row["pressure_improvement"] == 0
+    assert row["balance_improvement"] == 0
+    assert row["badness_improvement"] == 0
+    assert row["weakness_improvement"] == 0
+
+
+def test_matchup_swaps_improvement_filter_excludes_equal_alternatives(chart):
+    result = suggest_matchup_swaps(
+        {"original": ["water"]},
+        {"alternative": ["water"]},
+        {"charmander": ["fire"]},
+        chart,
+        improvements_only=True,
+    )
+
+    assert result.empty
+    assert list(result.columns) == MATCHUP_SWAP_COLUMNS
+
+
+def test_matchup_swaps_improvement_filter_keeps_beneficial_swap(chart):
+    result = suggest_matchup_swaps(
+        {"charmander": ["fire"]},
+        {"squirtle": ["water"]},
+        {"opponent": ["water"]},
+        chart,
+        improvements_only=True,
+    )
+
+    assert len(result) == 1
+    row = result.iloc[0]
+
+    assert row["candidate"] == "squirtle"
+    assert bool(row["is_improvement"])
+    assert row["pressure_improvement"] > 0
+    assert row["balance_improvement"] > 0
+
+
+def test_matchup_swap_deltas_match_recomputed_scores(chart):
+    team = {
+        "charizard": ["fire", "flying"],
+        "gyarados": ["water", "flying"],
+    }
+    candidates = {"excadrill": ["ground", "steel"]}
+    opponents = {"pikachu": ["electric"]}
+
+    result = suggest_matchup_swaps(team, candidates, opponents, chart)
+    row = result.iloc[0]
+
+    swapped_team = {
+        name: candidates[row["candidate"]] if name == row["replaces"] else types
+        for name, types in team.items()
+    }
+
+    assert row["pressure_improvement"] == (
+        matchup_threat_pressure(team, opponents, chart)
+        - matchup_threat_pressure(swapped_team, opponents, chart)
+    )
+    assert row["balance_improvement"] == pytest.approx(
+        team_matchup_balance(swapped_team, opponents, chart)
+        - team_matchup_balance(team, opponents, chart)
+    )
+    assert row["badness_improvement"] == (
+        team_badness(team, chart) - team_badness(swapped_team, chart)
+    )
+    assert row["weakness_improvement"] == (
+        team_weak_total(team, chart) - team_weak_total(swapped_team, chart)
+    )
+
+
+def test_matchup_swaps_worse_alternative_is_not_improvement(chart):
+    team = {"squirtle": ["water"]}
+    candidates = {"charmander": ["fire"]}
+    opponents = {"opponent": ["water"]}
+
+    result = suggest_matchup_swaps(team, candidates, opponents, chart)
+    row = result.iloc[0]
+
+    assert not bool(row["is_improvement"])
+    assert row["pressure_improvement"] < 0
+
+    filtered = suggest_matchup_swaps(
+        team,
+        candidates,
+        opponents,
+        chart,
+        improvements_only=True,
+    )
+
+    assert filtered.empty
