@@ -27,6 +27,8 @@ def restore_team(
     snapshot: TeamState,
 ) -> None:
     """Restore a snapshot and remove move state belonging to other members."""
+    state.pop("pending_loadout", None)
+    state.pop("loadout_notice", None)
     for key in list(state):
         if key.startswith("moves_"):
             state.pop(key, None)

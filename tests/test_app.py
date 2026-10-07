@@ -8,6 +8,7 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 import pokedex.fetch as fetch
+import pokedex.loadout_ui as loadout_ui
 import pokedex.move_ui as move_ui
 from pokedex import threat_ui
 from pokedex.team_files import dump_team, load_team
@@ -1526,3 +1527,254 @@ def test_selected_move_details_remain_after_learnset_failure(monkeypatch):
     assert len(tables) == 1
     assert tables[0]["Move"].tolist() == ["Earthquake"]
     assert any("Existing selections are preserved" in warning.value for warning in at.warning)
+
+
+@pytest.fixture
+def fixed_loadouts(monkeypatch):
+    monkeypatch.setattr(
+        loadout_ui,
+        "suggest_loadouts",
+        lambda team, learnsets, stats, cache, chart: {
+            name: ["earthquake", "ice-beam"] for name in team
+        },
+    )
+
+
+def test_loadout_preview_and_cancel_do_not_change_build(fixed_loadouts):
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    before_url = at.query_params["team"]
+
+    at.button(key="preview_loadout_garchomp").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.multiselect(key="moves_tyranitar").value == []
+    assert at.query_params["team"] == before_url
+    assert any(button.key == "confirm_loadout" for button in at.button)
+
+    at.button(key="cancel_loadout").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert not any(button.key == "confirm_loadout" for button in at.button)
+
+
+def test_apply_loadout_changes_only_target_and_preserves_preferences(fixed_loadouts):
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
+    at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+    at = select_available_pool(at, ["dragonite", "togekiss"])
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+    before_url = at.query_params["team"]
+
+    at.button(key="preview_loadout_garchomp").click().run()
+    at.button(key="confirm_loadout").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == [
+        "earthquake",
+        "ice-beam",
+    ]
+    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+    assert at.multiselect(key="locked_members").value == ["garchomp"]
+    assert at.multiselect(key="available_pokemon").value == [
+        "dragonite",
+        "togekiss",
+    ]
+    assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
+    assert at.query_params["team"] == before_url
+    assert at.session_state["team_state"].members[0].moves == (
+        "earthquake",
+        "ice-beam",
+    )
+
+
+def test_manual_move_edit_dismisses_loadout_preview(fixed_loadouts):
+    at = run_app_with_team("garchomp")
+    at.button(key="preview_loadout_garchomp").click().run()
+    assert not at.exception
+
+    at.multiselect(key="moves_garchomp").set_value(["ice-beam"]).run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == ["ice-beam"]
+    assert not any(button.key == "confirm_loadout" for button in at.button)
+
+
+def test_remove_and_readd_member_does_not_restore_loadout_preview(fixed_loadouts):
+    at = run_app_with_team("garchomp,tyranitar")
+    at.button(key="preview_loadout_garchomp").click().run()
+
+    at.multiselect(key="team").set_value(["tyranitar"]).run()
+    at.multiselect(key="team").set_value(["tyranitar", "garchomp"]).run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == []
+    assert not any(button.key == "confirm_loadout" for button in at.button)
+
+
+def test_apply_loadout_clears_swap_preview_and_preserves_undo(fixed_loadouts):
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+    at = apply_first_matchup_swap(at)
+    before_undo = at.session_state["team_before_swap"]
+
+    at.button(key="matchup_swap_0").click().run()
+    at.button(key="preview_loadout_garchomp").click().run()
+    assert not at.exception
+    assert any(button.key == "confirm_swap_preview" for button in at.button)
+
+    at.button(key="confirm_loadout").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == [
+        "earthquake",
+        "ice-beam",
+    ]
+    assert at.session_state["team_before_swap"] == before_undo
+    assert any(button.key == "undo_swap" for button in at.button)
+    assert not any(button.key == "confirm_swap_preview" for button in at.button)
+
+
+def test_empty_loadout_has_disabled_preview(monkeypatch):
+    monkeypatch.setattr(
+        loadout_ui,
+        "suggest_loadouts",
+        lambda team, learnsets, stats, cache, chart: {name: [] for name in team},
+    )
+
+    at = run_app_with_team("garchomp")
+
+    assert not at.exception
+    assert at.button(key="preview_loadout_garchomp").disabled
+
+
+def test_matching_loadout_has_disabled_preview(fixed_loadouts):
+    at = run_app_with_team("garchomp")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake", "ice-beam"]).run()
+
+    assert not at.exception
+    assert at.button(key="preview_loadout_garchomp").disabled
+
+
+def test_successful_team_import_dismisses_loadout_preview(fixed_loadouts):
+    at = run_app_with_team("garchomp,tyranitar")
+    at.button(key="preview_loadout_garchomp").click().run()
+
+    at.text_area(key="showdown_paste").input(PASTE)
+    at.button(key="import_btn").click().run()
+
+    assert not at.exception
+    assert not any(button.key == "confirm_loadout" for button in at.button)
+
+
+def test_failed_team_import_preserves_loadout_preview(fixed_loadouts):
+    at = run_app_with_team("garchomp,tyranitar")
+    at.button(key="preview_loadout_garchomp").click().run()
+    before = at.session_state["pending_loadout"]
+
+    at.text_area(key="showdown_paste").input("Missingno @ Nothing")
+    at.button(key="import_btn").click().run()
+
+    assert not at.exception
+    assert at.session_state["pending_loadout"] == before
+    assert any(button.key == "confirm_loadout" for button in at.button)
+
+
+@pytest.mark.parametrize("file_kind", ["team", "workspace"])
+@pytest.mark.parametrize("valid_file", [True, False], ids=["valid", "rejected"])
+def test_json_restore_handles_pending_loadout(
+    monkeypatch,
+    fixed_loadouts,
+    file_kind,
+    valid_file,
+):
+    if not valid_file:
+        contents = "{"
+    elif file_kind == "team":
+        contents = dump_team(saved_build())
+    else:
+        contents = dump_workspace(saved_analysis_workspace())
+
+    mock_team_upload(monkeypatch, contents)
+
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    at.button(key="preview_loadout_garchomp").click().run()
+    assert not at.exception
+
+    before_proposal = at.session_state["pending_loadout"]
+    button_key = "load_team_json" if file_kind == "team" else "load_workspace_json"
+
+    at.button(key=button_key).click().run()
+
+    assert not at.exception
+
+    if valid_file:
+        assert not any(button.key == "confirm_loadout" for button in at.button)
+        assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+        assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    else:
+        assert at.session_state["pending_loadout"] == before_proposal
+        assert any(button.key == "confirm_loadout" for button in at.button)
+        assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+        assert at.multiselect(key="moves_tyranitar").value == []
+
+
+def test_undo_after_loadout_apply_restores_complete_pre_swap_build(fixed_loadouts):
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
+    at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+
+    at = apply_first_matchup_swap(at)
+    at.button(key="preview_loadout_garchomp").click().run()
+    at.button(key="confirm_loadout").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == [
+        "earthquake",
+        "ice-beam",
+    ]
+
+    at.button(key="undo_swap").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    assert at.multiselect(key="locked_members").value == ["garchomp"]
+    assert not any(button.key == "confirm_loadout" for button in at.button)
+
+
+def test_applied_loadout_is_in_team_and_workspace_downloads(
+    monkeypatch,
+    fixed_loadouts,
+):
+    downloads = {}
+    original_download_button = st.download_button
+
+    def capture_download(*args, **kwargs):
+        key = kwargs.get("key")
+        if key in {"download_team_json", "download_workspace_json"}:
+            downloads[key] = kwargs["data"]
+        return original_download_button(*args, **kwargs)
+
+    monkeypatch.setattr(st, "download_button", capture_download)
+
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
+
+    at.button(key="preview_loadout_garchomp").click().run()
+    at.button(key="confirm_loadout").click().run()
+
+    assert not at.exception
+
+    team = load_team(downloads["download_team_json"])
+    workspace = load_workspace(downloads["download_workspace_json"])
+
+    assert team.members[0].moves == ("earthquake", "ice-beam")
+    assert team.members[1].moves == ("ice-beam",)
+    assert workspace.team == team
