@@ -665,6 +665,27 @@ with st.expander("Save or load workspace"):
         st.success(success)
 
 
+st.download_button(
+    "Download Showdown team",
+    data=showdown_export(snapshot_team(st.session_state)),
+    file_name="pokemon-team.txt",
+    mime="text/plain",
+    key="download_showdown",
+    on_click="ignore",
+    disabled=not names,
+    help=(
+        "Export the selected team's species and current selected moves. "
+        "Does not export items, abilities, EVs, IVs, natures, or locks."
+    ),
+)
+
+st.caption(
+    "Showdown export includes species and selected moves only. "
+    "Unverified move selections are preserved; names, forms, and battle "
+    "legality are not validated for your target format. "
+    "Use team or workspace JSON to preserve locks."
+)
+
 if names:
     st.query_params["team"] = ",".join(names)
     st.caption("The page URL now links to this team. Copy it to share.")
@@ -702,13 +723,6 @@ for col, (name, types) in zip(cols, team.items(), strict=False):
         if name in locked_members:
             st.caption("Locked")
 
-st.download_button(
-    "Download Showdown team",
-    data=showdown_export(team),
-    file_name="pokemon-team.txt",
-    mime="text/plain",
-    help="Download this team's Pokémon names in Pokémon Showdown import format.",
-)
 
 pending_swap = st.session_state.get("pending_swap")
 
