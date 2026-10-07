@@ -58,12 +58,14 @@ def cached_matchup_swaps(
     candidates: Team,
     opponent_team: Team,
     chart: TypeChart,
+    improvements_only: bool = False,
 ) -> pd.DataFrame:
     return suggest_matchup_swaps(
         team,
         candidates,
         opponent_team,
         chart,
+        improvements_only=improvements_only,
     )
 
 
@@ -418,10 +420,21 @@ with opponent_matchups:
             st.dataframe(matchups, width="stretch")
             st.markdown("#### Matchup-specific swap suggestions")
             st.caption(
-                "Ranked for the selected opponent team: lower threat pressure first, "
-                "then higher matchup balance. Overall team health breaks ties. "
-                "These are type-only rankings, not battle predictions."
+                "Ranked by lower threat pressure, then higher matchup balance. "
+                "Overall team health breaks ties. These are type-only rankings."
             )
+
+            improvements_only = st.checkbox(
+                "Show only improvements",
+                value=True,
+                key="matchup_improvements_only",
+                help=(
+                    "Compare each proposed team with your current team using "
+                    "the ranking priorities. Uncheck to include equal or worse alternatives."
+                ),
+            )
+
+            eligible_candidates = any(name not in team for name in candidates)
 
             with st.spinner("Ranking matchup-specific swaps..."):
                 matchup_swaps = cached_matchup_swaps(
@@ -429,10 +442,16 @@ with opponent_matchups:
                     candidates,
                     opponent_team,
                     chart,
+                    improvements_only=improvements_only,
                 )
 
-            if matchup_swaps.empty:
+            if not eligible_candidates:
                 st.info("No eligible single swaps are available.")
+            elif matchup_swaps.empty:
+                st.info(
+                    "No beneficial single swap found. Uncheck 'Show only improvements' "
+                    "to explore other alternatives."
+                )
             else:
                 shown_matchup_swaps = matchup_swaps.copy()
                 shown_matchup_swaps.insert(
@@ -449,20 +468,20 @@ with opponent_matchups:
                         "sprite": st.column_config.ImageColumn("", width="small"),
                         SWAP_IN: st.column_config.TextColumn("Swap in"),
                         SWAP_OUT: st.column_config.TextColumn("Swap out"),
+                        "is_improvement": st.column_config.CheckboxColumn(
+                            "Improves ranking",
+                            help="True when the proposed team ranks above your current team.",
+                        ),
                         "threat_pressure": st.column_config.NumberColumn(
                             "Threat pressure",
-                            help="Threatened members minus offensive answers. Lower is better.",
+                            help=(
+                                "Threatened members minus super-effective attackers. "
+                                "Lower is better."
+                            ),
                         ),
                         "matchup_balance": st.column_config.NumberColumn(
                             "Matchup balance",
                             help="Total native-type pressure across both teams. Higher is better.",
-                        ),
-                        "pressure_improvement": st.column_config.NumberColumn(
-                            "Pressure improvement",
-                            help=(
-                                "Current pressure minus pressure after the swap. "
-                                "Positive is better."
-                            ),
                         ),
                         "new_badness": st.column_config.NumberColumn(
                             "New badness",
@@ -472,28 +491,121 @@ with opponent_matchups:
                             "Weakness total",
                             help="Number of weak attack-type/member pairs after the swap.",
                         ),
+                        "pressure_improvement": st.column_config.NumberColumn(
+                            "Pressure improvement",
+                            help="Current pressure minus proposed pressure. Positive is better.",
+                        ),
+                        "balance_improvement": st.column_config.NumberColumn(
+                            "Balance improvement",
+                            help="Proposed balance minus current balance. Positive is better.",
+                        ),
+                        "badness_improvement": st.column_config.NumberColumn(
+                            "Badness improvement",
+                            help="Current badness minus proposed badness. Positive is better.",
+                        ),
+                        "weakness_improvement": st.column_config.NumberColumn(
+                            "Weakness improvement",
+                            help="Current weakness count minus proposed count. Positive is better.",
+                        ),
                     },
                 )
 
                 st.caption(
-                    "The table ranks eligible replacements; it does not guarantee "
-                    "that every listed swap improves on your current team. "
-                    "A positive pressure improvement means fewer net threats."
+                    "Positive improvement values are better; negative values show a downside. "
+                    "A swap can improve opponent matchups while worsening overall team health."
                 )
 
-                st.markdown("**Try a matchup swap**")
+                current_threats = threat_rows.set_index("opponent")
+
                 for index, row in enumerate(
                     matchup_swaps.head(SWAP_BUTTONS).itertuples(index=False)
                 ):
                     out_name = row.replaces
                     in_name = row.candidate
+                    swap_label = f"{display_name(out_name)} → {display_name(in_name)}"
+
+                    with st.expander(f"Why this swap? {swap_label}"):
+                        if row.pressure_improvement > 0:
+                            st.write("Primary benefit: lower opponent threat pressure.")
+                        elif row.pressure_improvement < 0:
+                            st.write("Downside: higher opponent threat pressure.")
+                        elif row.balance_improvement > 0:
+                            st.write(
+                                "Primary benefit: higher matchup balance, "
+                                "with unchanged total threat pressure."
+                            )
+                        elif row.balance_improvement < 0:
+                            st.write("Downside: lower matchup balance.")
+                        elif row.badness_improvement > 0:
+                            st.write(
+                                "Opponent metrics are unchanged; overall team badness improves."
+                            )
+                        elif row.weakness_improvement > 0:
+                            st.write(
+                                "Opponent metrics and badness are unchanged; "
+                                "the team has fewer weakness pairs."
+                            )
+                        elif row.is_improvement:
+                            st.write("The proposed team improves the ranking.")
+                        else:
+                            st.write("This alternative does not improve the current ranking.")
+
+                        if row.badness_improvement < 0:
+                            st.warning(
+                                "Tradeoff: overall team badness increases by "
+                                f"{-row.badness_improvement:g}."
+                            )
+                        if row.weakness_improvement < 0:
+                            st.warning(
+                                "Tradeoff: weakness pairs increase by "
+                                f"{-row.weakness_improvement:g}."
+                            )
+
+                        proposed_team = {
+                            name: candidates[in_name] if name == out_name else types
+                            for name, types in team.items()
+                        }
+                        proposed_threats = opponent_threat_report(
+                            proposed_team,
+                            opponent_team,
+                            chart,
+                        ).set_index("opponent")
+
+                        explanation_rows = []
+                        for opponent_name in opponent_team:
+                            before = current_threats.loc[opponent_name]
+                            after = proposed_threats.loc[opponent_name]
+
+                            explanation_rows.append(
+                                {
+                                    "Opponent": display_name(opponent_name),
+                                    "Threatened before": int(before["threatens"]),
+                                    "Threatened after": int(after["threatens"]),
+                                    "Attackers before": int(before["answered_by"]),
+                                    "Attackers after": int(after["answered_by"]),
+                                    "Pressure improvement": (
+                                        int(before["threat_score"]) - int(after["threat_score"])
+                                    ),
+                                }
+                            )
+
+                        st.dataframe(
+                            pd.DataFrame(explanation_rows),
+                            width="stretch",
+                            hide_index=True,
+                        )
+                        st.caption(
+                            "'Attackers' means members with super-effective native-type "
+                            "offense. It does not mean a safe switch-in or guaranteed win."
+                        )
 
                     st.button(
-                        f"{display_name(out_name)} → {display_name(in_name)}",
+                        swap_label,
                         key=f"matchup_swap_{index}",
                         on_click=apply_swap,
                         args=(out_name, in_name),
                     )
+
             st.markdown("#### Opponent threat report")
             st.dataframe(
                 threat_rows,
@@ -509,10 +621,11 @@ with opponent_matchups:
                         ),
                     ),
                     "answered_by": st.column_config.NumberColumn(
-                        "Available answers",
+                        "Super-effective attackers",
                         help=(
                             "How many of your Pokémon can hit this opponent "
-                            "super-effectively using one of their native types."
+                            "super-effectively using a native type. This does not "
+                            "mean they can safely switch in or win the matchup."
                         ),
                     ),
                     "threat_score": st.column_config.NumberColumn(

@@ -261,8 +261,8 @@ def test_opponent_picker_uses_same_available_pokemon_as_team_picker():
 
 def test_matchup_swap_results_render():
     at = run_app_with_team("garchomp,tyranitar")
-
     at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
 
     assert not at.exception
 
@@ -301,11 +301,16 @@ def test_matchup_swap_button_updates_team_and_preserves_opponents():
     at.multiselect(key="opponent_team").set_value(opponents).run()
     assert not at.exception
 
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+    assert not at.exception
+
     swap_table = next(
         element.value
         for element in at.dataframe
         if {"candidate", "replaces", "pressure_improvement"}.issubset(element.value.columns)
     )
+    assert not swap_table.empty
+
     top = swap_table.iloc[0]
     before = list(at.multiselect(key="team").value)
     expected = [top["candidate"] if name == top["replaces"] else name for name in before]
@@ -315,6 +320,7 @@ def test_matchup_swap_button_updates_team_and_preserves_opponents():
     assert not at.exception
     assert at.multiselect(key="team").value == expected
     assert at.multiselect(key="opponent_team").value == opponents
+    assert at.checkbox(key="matchup_improvements_only").value is False
 
     url_team = at.query_params["team"]
     assert url_team == ",".join(expected) or url_team == [",".join(expected)]
@@ -328,3 +334,38 @@ def test_matchup_swaps_show_prompt_when_no_candidates_are_eligible():
     assert not at.exception
     assert any(info.value == "No eligible single swaps are available." for info in at.info)
     assert not any(button.key and button.key.startswith("matchup_swap_") for button in at.button)
+
+
+def test_matchup_improvement_filter_defaults_to_enabled():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+
+    assert not at.exception
+    assert at.checkbox(key="matchup_improvements_only").value is True
+
+    swap_tables = [
+        element.value
+        for element in at.dataframe
+        if {"candidate", "is_improvement"}.issubset(element.value.columns)
+    ]
+
+    for table in swap_tables:
+        assert table["is_improvement"].all()
+
+
+def test_matchup_swap_explanations_render():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+
+    assert not at.exception
+    assert any(expander.label.startswith("Why this swap?") for expander in at.expander)
+
+    explanation_tables = [
+        element.value
+        for element in at.dataframe
+        if {"Opponent", "Threatened before", "Threatened after"}.issubset(element.value.columns)
+    ]
+
+    assert explanation_tables
+    assert explanation_tables[0]["Opponent"].tolist() == ["Ferrothorn"]

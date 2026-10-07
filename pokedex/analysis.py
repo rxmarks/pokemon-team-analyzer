@@ -15,6 +15,10 @@ MATCHUP_SWAP_COLUMNS = [
     "new_badness",
     "weak_total",
     "pressure_improvement",
+    "balance_improvement",
+    "badness_improvement",
+    "weakness_improvement",
+    "is_improvement",
 ]
 
 OPPONENT_THREAT_COLUMNS = [
@@ -35,6 +39,10 @@ class MatchupSwap(TypedDict):
     new_badness: int
     weak_total: int
     pressure_improvement: int
+    balance_improvement: float
+    badness_improvement: int
+    weakness_improvement: int
+    is_improvement: bool
 
 
 def multiplier(attack_type: str, defender_types: list[str], type_chart: TypeChart) -> float:
@@ -421,6 +429,8 @@ def suggest_matchup_swaps(
     opponent_team: Team,
     type_chart: TypeChart,
     top_n: int = TOP_N_SWAPS,
+    *,
+    improvements_only: bool = False,
 ) -> pd.DataFrame:
     """Rank swaps using precomputed type profiles and opponent contributions."""
     if not team or not opponent_team or top_n <= 0:
@@ -447,7 +457,17 @@ def suggest_matchup_swaps(
     contributions = {name: opponent_contribution(types) for name, types in team.items()}
     base_pressure = sum(value[0] for value in contributions.values())
     base_balance = sum(value[1] for value in contributions.values())
-
+    base_badness, base_weak_total = score_team(
+        list(profiles.values()),
+        list(coverages.values()),
+        all_types,
+    )
+    base_rank = (
+        base_pressure,
+        -base_balance,
+        base_badness,
+        base_weak_total,
+    )
     remaining_profiles = {
         name: [profiles[other] for other in member_names if other != name] for name in member_names
     }
@@ -478,6 +498,13 @@ def suggest_matchup_swaps(
                 all_types,
             )
 
+            proposed_rank = (
+                pressure,
+                -balance,
+                new_badness,
+                weak_total,
+            )
+
             result: MatchupSwap = {
                 "candidate": candidate_name,
                 "replaces": replaced_name,
@@ -486,12 +513,16 @@ def suggest_matchup_swaps(
                 "new_badness": new_badness,
                 "weak_total": weak_total,
                 "pressure_improvement": base_pressure - pressure,
+                "balance_improvement": balance - base_balance,
+                "badness_improvement": base_badness - new_badness,
+                "weakness_improvement": base_weak_total - weak_total,
+                "is_improvement": proposed_rank < base_rank,
             }
 
             if best is None or matchup_swap_rank(result) < matchup_swap_rank(best):
                 best = result
 
-        if best is not None:
+        if best is not None and (not improvements_only or best["is_improvement"]):
             results.append(best)
 
     if not results:
