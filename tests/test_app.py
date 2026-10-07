@@ -7,6 +7,7 @@ import requests
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
+import pokedex.analysis as analysis
 import pokedex.fetch as fetch
 import pokedex.loadout_ui as loadout_ui
 import pokedex.move_ui as move_ui
@@ -2109,4 +2110,122 @@ def test_team_summary_updates_after_direct_team_edit():
         and "Garchomp to Ice" in value
         and "Tyranitar" not in value
         for value in markdown_values
+    )
+
+
+@pytest.mark.parametrize(
+    "failed_names",
+    [
+        pytest.param({"garchomp"}, id="partial-stat-failure"),
+        pytest.param(
+            {"garchomp", "tyranitar"},
+            id="all-stat-lookups-fail",
+        ),
+    ],
+)
+def test_stat_failures_preserve_type_analysis(monkeypatch, failed_names):
+    attempted_names = []
+
+    def lookup_stats(name, cache):
+        attempted_names.append(name)
+        if name in failed_names:
+            raise requests.ConnectionError("offline")
+        return FAKE_STATS
+
+    def unexpected_stat_check(stats):
+        raise AssertionError("Team-wide checks must not use incomplete stats")
+
+    def unexpected_loadouts(*args, **kwargs):
+        raise AssertionError("Loadouts must not use incomplete stats")
+
+    monkeypatch.setattr(fetch, "stats_cache_first", lookup_stats)
+    monkeypatch.setattr(analysis, "stat_warnings", unexpected_stat_check)
+    monkeypatch.setattr(
+        loadout_ui,
+        "render_loadout_suggestions",
+        unexpected_loadouts,
+    )
+    st.cache_data.clear()
+
+    at = run_app_with_team("garchomp,tyranitar")
+
+    assert not at.exception
+    assert attempted_names == ["garchomp", "tyranitar"]
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+    assert len(at.tabs) == 7
+    assert len(at.metric) >= 5
+    assert any(element.value == "### What to review" for element in at.markdown)
+    assert any(
+        "Couldn't load base stats for:" in warning.value
+        and "Type-based analysis remains available." in warning.value
+        for warning in at.warning
+    )
+
+    moves_tab = at.tabs[2]
+    assert moves_tab.multiselect(key="moves_garchomp")
+    assert moves_tab.multiselect(key="moves_tyranitar")
+    assert any("Suggested move loadouts are unavailable" in info.value for info in moves_tab.info)
+
+    stats_tab = at.tabs[5]
+    if len(failed_names) == 1:
+        assert len(stats_tab.dataframe) == 1
+        assert list(stats_tab.dataframe[0].value.index) == ["tyranitar"]
+        assert any(
+            "Partial base-stat table: 1 of 2 analyzed members loaded." in warning.value
+            for warning in stats_tab.warning
+        )
+    else:
+        assert len(stats_tab.dataframe) == 0
+        assert any(
+            "Base stats are unavailable for all analyzed members." in info.value
+            for info in stats_tab.info
+        )
+
+    assert not stats_tab.success
+    assert "Suggested move loadouts" not in [header.value for header in at.subheader]
+
+
+def test_stat_features_recover_without_losing_selected_moves(monkeypatch):
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
+
+    team_before = list(at.multiselect(key="team").value)
+
+    def unavailable_stats(name, cache):
+        raise requests.ConnectionError("offline")
+
+    monkeypatch.setattr(fetch, "stats_cache_first", unavailable_stats)
+    st.cache_data.clear()
+    at.run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == team_before
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    assert "Suggested move loadouts" not in [header.value for header in at.subheader]
+
+    monkeypatch.setattr(
+        fetch,
+        "stats_cache_first",
+        lambda name, cache: FAKE_STATS,
+    )
+    st.cache_data.clear()
+    at.run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == team_before
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    assert "Suggested move loadouts" in [header.value for header in at.subheader]
+
+    stats_tab = at.tabs[5]
+    assert len(stats_tab.dataframe) == 1
+    assert list(stats_tab.dataframe[0].value.index) == [
+        "garchomp",
+        "tyranitar",
+    ]
+    assert not any("Couldn't load base stats for:" in warning.value for warning in at.warning)
+    assert not any(
+        "Suggested move loadouts are unavailable" in info.value for info in at.tabs[2].info
     )
