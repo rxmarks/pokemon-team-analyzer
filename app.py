@@ -12,6 +12,7 @@ from pokedex.analysis import (
     team_badness,
     team_table,
 )
+from pokedex.analysis_safety import has_complete_team
 from pokedex.config import (
     CACHE_TTL_SECONDS,
     DEFAULT_TEAM,
@@ -47,6 +48,12 @@ SWAP_OUT = "replaces"
 SWAP_IN = "candidate"
 SWAP_GAIN = "improvement"
 SWAP_BUTTONS = 5
+
+PARTIAL_TEAM_SWAP_MESSAGE = (
+    "Swap suggestions and applying swaps are unavailable until types "
+    "can be loaded for every selected team member. "
+    "Available analysis covers loaded members only."
+)
 
 
 @st.cache_data
@@ -308,8 +315,33 @@ def import_showdown() -> None:
         clear_swap_history()
 
 
+def swap_team_is_available() -> bool:
+    """Recheck selected-team types before staging or applying a swap."""
+    selected = list(st.session_state.get("team", []))
+    loaded: list[str] = []
+
+    for name in selected:
+        try:
+            types = cached_types(name)
+        except requests.RequestException:
+            continue
+
+        if types:
+            loaded.append(name)
+
+    complete = has_complete_team(selected, loaded)
+
+    if not complete:
+        st.session_state.pop("pending_swap", None)
+        st.session_state["swap_safety_notice"] = PARTIAL_TEAM_SWAP_MESSAGE
+
+    return complete
+
+
 def apply_swap(out_name: str, in_name: str) -> None:
     """Apply a valid replacement and preserve the complete previous build."""
+    if not swap_team_is_available():
+        return
     current = snapshot_team(st.session_state)
 
     if (
@@ -333,6 +365,8 @@ def apply_swap(out_name: str, in_name: str) -> None:
 
 def stage_swap(out_name: str, in_name: str) -> None:
     """Stage a valid replacement of an unlocked member."""
+    if not swap_team_is_available():
+        return
     current_team = list(st.session_state["team"])
     locks = set(st.session_state.get("locked_members", []))
 
@@ -726,6 +760,14 @@ chart = cached_chart()
 with st.spinner("Fetching Pokémon data..."):
     team = load_team_types(names, "your team")
 
+team_complete = has_complete_team(names, team)
+
+if not team_complete:
+    cancel_swap_preview()
+
+if notice := st.session_state.pop("swap_safety_notice", None):
+    st.warning(notice)
+
 if not team:
     st.error("Couldn't load any Pokémon for your team. Try again in a moment.")
     st.stop()
@@ -881,17 +923,29 @@ else:
 
 eligible_replacement_count = sum(name not in team for name in candidates)
 
-with st.spinner("Ranking swap candidates..."):
-    swaps = suggest_swaps(
-        team,
-        candidates,
-        chart,
-        locked_members=locked_members,
-    )
+swaps = pd.DataFrame()
+
+if team_complete:
+    with st.spinner("Ranking swap candidates..."):
+        swaps = suggest_swaps(
+            team,
+            candidates,
+            chart,
+            locked_members=locked_members,
+        )
 
 shared_weak = int(((table[member_cols] >= 2).sum(axis=1) >= 2).sum())
 quad_weak = int((table[member_cols] >= 4).to_numpy().sum())
-best_swap = f"−{swaps[SWAP_GAIN].iloc[0]:g}" if not swaps.empty else "None"
+if not team_complete:
+    best_swap = "Unavailable"
+else:
+    best_swap = f"−{swaps[SWAP_GAIN].iloc[0]:g}" if not swaps.empty else "None"
+
+if not team_complete:
+    st.caption(
+        f"Partial type analysis: {len(team)} of {len(names)} "
+        "selected members loaded. The metrics below cover loaded members only."
+    )
 
 m1, m2, m3, m4, m5 = st.columns(5)
 
@@ -1049,17 +1103,22 @@ with opponent_matchups:
 
             eligible_candidates = any(name not in team for name in candidates)
 
-            with st.spinner("Ranking matchup-specific swaps..."):
-                matchup_swaps = cached_matchup_swaps(
-                    team,
-                    candidates,
-                    opponent_team,
-                    chart,
-                    improvements_only=improvements_only,
-                    locked_members=frozenset(locked_members),
-                )
+            matchup_swaps = pd.DataFrame()
 
-            if all_members_locked:
+            if team_complete:
+                with st.spinner("Ranking matchup-specific swaps..."):
+                    matchup_swaps = cached_matchup_swaps(
+                        team,
+                        candidates,
+                        opponent_team,
+                        chart,
+                        improvements_only=improvements_only,
+                        locked_members=frozenset(locked_members),
+                    )
+
+            if not team_complete:
+                st.info(PARTIAL_TEAM_SWAP_MESSAGE)
+            elif all_members_locked:
                 st.info("All team members are locked. Unlock one to see swap suggestions.")
             elif not eligible_candidates:
                 st.info("No eligible single swaps are available.")
@@ -1308,10 +1367,12 @@ with stats_tab:
 
 with swaps_tab:
     st.caption(
-        f"Searching {eligible_replacement_count} eligible replacement Pokémon "
+        f"Replacement pool: {eligible_replacement_count} eligible Pokémon "
         f"from {candidate_source.lower()}."
     )
-    if all_members_locked:
+    if not team_complete:
+        st.info(PARTIAL_TEAM_SWAP_MESSAGE)
+    elif all_members_locked:
         st.info("All team members are locked. Unlock one to see swap suggestions.")
     elif eligible_replacement_count == 0:
         st.info("No eligible single swaps are available.")
