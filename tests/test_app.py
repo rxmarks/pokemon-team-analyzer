@@ -257,3 +257,74 @@ def test_opponent_picker_uses_same_available_pokemon_as_team_picker():
     opponent_options = list(at.multiselect(key="opponent_team").options)
 
     assert opponent_options == team_options
+
+
+def test_matchup_swap_results_render():
+    at = run_app_with_team("garchomp,tyranitar")
+
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+
+    assert not at.exception
+
+    tables = [element.value for element in at.dataframe]
+    swap_tables = [
+        table
+        for table in tables
+        if {"candidate", "replaces", "pressure_improvement"}.issubset(table.columns)
+    ]
+
+    assert len(swap_tables) == 1
+
+    swaps = swap_tables[0]
+    assert not swaps.empty
+    assert "threat_pressure" in swaps.columns
+    assert "matchup_balance" in swaps.columns
+    assert not set(swaps["candidate"]) & {"garchomp", "tyranitar"}
+    assert set(swaps["replaces"]) <= {"garchomp", "tyranitar"}
+
+
+def test_matchup_swap_results_absent_without_opponents():
+    at = run_app()
+
+    assert not at.exception
+    assert not any(
+        {"candidate", "replaces", "pressure_improvement"}.issubset(element.value.columns)
+        for element in at.dataframe
+    )
+    assert not any(button.key and button.key.startswith("matchup_swap_") for button in at.button)
+
+
+def test_matchup_swap_button_updates_team_and_preserves_opponents():
+    at = run_app_with_team("garchomp,tyranitar")
+    opponents = ["ferrothorn"]
+
+    at.multiselect(key="opponent_team").set_value(opponents).run()
+    assert not at.exception
+
+    swap_table = next(
+        element.value
+        for element in at.dataframe
+        if {"candidate", "replaces", "pressure_improvement"}.issubset(element.value.columns)
+    )
+    top = swap_table.iloc[0]
+    before = list(at.multiselect(key="team").value)
+    expected = [top["candidate"] if name == top["replaces"] else name for name in before]
+
+    at.button(key="matchup_swap_0").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == expected
+    assert at.multiselect(key="opponent_team").value == opponents
+
+    url_team = at.query_params["team"]
+    assert url_team == ",".join(expected) or url_team == [",".join(expected)]
+
+
+def test_matchup_swaps_show_prompt_when_no_candidates_are_eligible():
+    at = run_app()
+
+    at.multiselect(key="opponent_team").set_value(["tyranitar"]).run()
+
+    assert not at.exception
+    assert any(info.value == "No eligible single swaps are available." for info in at.info)
+    assert not any(button.key and button.key.startswith("matchup_swap_") for button in at.button)

@@ -422,41 +422,61 @@ def suggest_matchup_swaps(
     type_chart: TypeChart,
     top_n: int = TOP_N_SWAPS,
 ) -> pd.DataFrame:
-    """Rank one-for-one swaps for the selected opponent team's type matchups."""
-    if not opponent_team:
+    """Rank swaps using precomputed type profiles and opponent contributions."""
+    if not team or not opponent_team or top_n <= 0:
         return pd.DataFrame(columns=MATCHUP_SWAP_COLUMNS)
 
-    base_pressure = matchup_threat_pressure(
-        team,
-        opponent_team,
-        type_chart,
-    )
+    all_types = list(type_chart)
+    member_names = list(team)
+    profiles = {name: member_profile(types, type_chart) for name, types in team.items()}
+    coverages = {name: member_coverage(types, type_chart) for name, types in team.items()}
+
+    def opponent_contribution(types: list[str]) -> tuple[int, float]:
+        pressure = 0
+        balance = 0.0
+
+        for opponent_types in opponent_team.values():
+            own_offense = best_stab_multiplier(types, opponent_types, type_chart)
+            enemy_offense = best_stab_multiplier(opponent_types, types, type_chart)
+
+            pressure += int(enemy_offense > 1) - int(own_offense > 1)
+            balance += own_offense - enemy_offense
+
+        return pressure, balance
+
+    contributions = {name: opponent_contribution(types) for name, types in team.items()}
+    base_pressure = sum(value[0] for value in contributions.values())
+    base_balance = sum(value[1] for value in contributions.values())
+
+    remaining_profiles = {
+        name: [profiles[other] for other in member_names if other != name] for name in member_names
+    }
+    remaining_coverages = {
+        name: [coverages[other] for other in member_names if other != name] for name in member_names
+    }
+
     results: list[MatchupSwap] = []
 
     for candidate_name, candidate_types in candidates.items():
         if candidate_name in team:
             continue
 
+        candidate_profile = member_profile(candidate_types, type_chart)
+        candidate_coverage = member_coverage(candidate_types, type_chart)
+        candidate_pressure, candidate_balance = opponent_contribution(candidate_types)
+
         best: MatchupSwap | None = None
 
-        for replaced_name in team:
-            swapped_team = {
-                member_name: (candidate_types if member_name == replaced_name else member_types)
-                for member_name, member_types in team.items()
-            }
+        for replaced_name in member_names:
+            removed_pressure, removed_balance = contributions[replaced_name]
+            pressure = base_pressure - removed_pressure + candidate_pressure
+            balance = base_balance - removed_balance + candidate_balance
 
-            pressure = matchup_threat_pressure(
-                swapped_team,
-                opponent_team,
-                type_chart,
+            new_badness, weak_total = score_team(
+                remaining_profiles[replaced_name] + [candidate_profile],
+                remaining_coverages[replaced_name] + [candidate_coverage],
+                all_types,
             )
-            balance = team_matchup_balance(
-                swapped_team,
-                opponent_team,
-                type_chart,
-            )
-            new_badness = team_badness(swapped_team, type_chart)
-            weak_total = team_weak_total(swapped_team, type_chart)
 
             result: MatchupSwap = {
                 "candidate": candidate_name,
@@ -477,16 +497,19 @@ def suggest_matchup_swaps(
     if not results:
         return pd.DataFrame(columns=MATCHUP_SWAP_COLUMNS)
 
-    ranked = pd.DataFrame(results, columns=MATCHUP_SWAP_COLUMNS).sort_values(
-        by=[
-            "threat_pressure",
-            "matchup_balance",
-            "new_badness",
-            "weak_total",
-            "candidate",
-            "replaces",
-        ],
-        ascending=[True, False, True, True, True, True],
+    return (
+        pd.DataFrame(results, columns=MATCHUP_SWAP_COLUMNS)
+        .sort_values(
+            by=[
+                "threat_pressure",
+                "matchup_balance",
+                "new_badness",
+                "weak_total",
+                "candidate",
+                "replaces",
+            ],
+            ascending=[True, False, True, True, True, True],
+        )
+        .head(top_n)
+        .reset_index(drop=True)
     )
-
-    return ranked.head(top_n).reset_index(drop=True)
