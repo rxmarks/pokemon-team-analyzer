@@ -66,3 +66,23 @@ def test_empty_paste_returns_empty_team():
 )
 def test_normalize(raw, expected):
     assert normalize(raw) == expected
+
+
+def test_can_parse_roster_without_team_limit():
+    paste = "\n\n".join(f"Pokemon-{index} @ Leftovers\n- Tackle" for index in range(8))
+
+    roster = parse_showdown(paste, max_members=None)
+
+    assert [mon.species for mon in roster] == [f"pokemon-{index}" for index in range(8)]
+
+
+def test_explicit_member_limit():
+    paste = "\n\n".join(f"Pokemon-{index}\n- Tackle" for index in range(4))
+
+    assert len(parse_showdown(paste, max_members=2)) == 2
+    assert parse_showdown(paste, max_members=0) == []
+
+
+def test_rejects_negative_member_limit():
+    with pytest.raises(ValueError, match="nonnegative"):
+        parse_showdown("Garchomp", max_members=-1)

@@ -29,6 +29,7 @@ from pokedex.fetch import (
 )
 from pokedex.loadout_ui import render_loadout_suggestions
 from pokedex.move_ui import render_move_coverage
+from pokedex.pool_import import PoolImportPreview, parse_pool_import
 from pokedex.showdown import parse_showdown
 from pokedex.team_files import dump_team, load_team
 from pokedex.team_session import reconcile_team, restore_team, snapshot_team
@@ -157,6 +158,51 @@ def clear_swap_history() -> None:
 def replacement_options_changed() -> None:
     """Dismiss a preview without changing the team or its undo history."""
     st.session_state.pop("pending_swap", None)
+
+
+def pool_import_preview() -> PoolImportPreview:
+    """Parse the current bulk input without changing the pool."""
+    input_format = (
+        "showdown" if st.session_state.get("pool_input_format") == "Showdown roster" else "names"
+    )
+
+    return parse_pool_import(
+        st.session_state.get("pool_paste", ""),
+        all_names,
+        input_format=input_format,
+    )
+
+
+def pool_import_input_changed() -> None:
+    """Dismiss old feedback without changing the pool or swap state."""
+    st.session_state.pop("pool_import_message", None)
+
+
+def apply_pool_import(replace: bool) -> None:
+    """Apply recognized species without changing the team build."""
+    preview = pool_import_preview()
+
+    if not preview.recognized:
+        return
+
+    previous = list(st.session_state.get("available_pokemon", []))
+
+    if replace:
+        updated = list(preview.recognized)
+    else:
+        updated = list(dict.fromkeys([*previous, *preview.recognized]))
+
+    st.session_state["available_pokemon"] = updated
+    st.session_state["candidate_source"] = "My available Pokémon"
+    replacement_options_changed()
+
+    if replace:
+        message = f"Replaced the pool with {len(updated)} Pokémon."
+    else:
+        added_count = len(updated) - len(previous)
+        message = f"Added {added_count} new Pokémon. The pool now contains {len(updated)} Pokémon."
+
+    st.session_state["pool_import_message"] = message
 
 
 def locks_changed() -> None:
@@ -355,6 +401,84 @@ with st.expander("Replacement options"):
     st.caption(
         "Replacement settings are session preferences and are not included in downloaded team JSON."
     )
+    st.markdown("#### Bulk pool entry")
+
+    st.radio(
+        "Input format",
+        options=["Pokémon names", "Showdown roster"],
+        key="pool_input_format",
+        on_change=pool_import_input_changed,
+        horizontal=True,
+    )
+
+    st.text_area(
+        "Paste Pokémon names or a Showdown roster",
+        key="pool_paste",
+        height=180,
+        on_change=pool_import_input_changed,
+        help=(
+            "Names mode accepts comma-separated names or one name per line. "
+            "Showdown mode extracts species and ignores build details. "
+            "Nothing changes until you click Add to pool or Replace pool."
+        ),
+    )
+
+    pool_preview = pool_import_preview()
+
+    if st.session_state.get("pool_paste", "").strip():
+        st.caption(
+            f"{len(pool_preview.recognized)} recognized species · "
+            f"{len(pool_preview.duplicates)} repeated species · "
+            f"{len(pool_preview.unrecognized)} unrecognized entries"
+        )
+
+        if pool_preview.recognized:
+            st.write(
+                "Recognized: " + ", ".join(display_name(name) for name in pool_preview.recognized)
+            )
+        else:
+            st.warning("No recognized Pokémon were found. Your pool is unchanged.")
+
+        if pool_preview.duplicates:
+            st.caption(
+                "Repeated species will be included once: "
+                + ", ".join(display_name(name) for name in pool_preview.duplicates)
+            )
+
+        if pool_preview.unrecognized:
+            st.warning(
+                "These entries will not be imported: " + ", ".join(pool_preview.unrecognized)
+            )
+
+    add_col, replace_col = st.columns(2)
+
+    with add_col:
+        st.button(
+            "Add to pool",
+            key="pool_add",
+            on_click=apply_pool_import,
+            args=(False,),
+            disabled=not pool_preview.recognized,
+            help="Keep existing pool selections and append recognized species.",
+        )
+
+    with replace_col:
+        st.button(
+            "Replace pool",
+            key="pool_replace",
+            on_click=apply_pool_import,
+            args=(True,),
+            disabled=not pool_preview.recognized,
+            help="Replace all pool selections with the recognized preview.",
+        )
+
+    st.caption(
+        "Both actions use recognized species only and activate "
+        "My available Pokémon. Unrecognized entries are excluded."
+    )
+
+    if message := st.session_state.get("pool_import_message"):
+        st.success(message)
 
 
 names = st.multiselect(

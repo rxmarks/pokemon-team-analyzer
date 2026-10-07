@@ -1080,3 +1080,131 @@ def test_meta_threats_reports_partial_cache_matches(monkeypatch):
     )
     assert table["threat"].tolist() == ["Garchomp"]
     assert not any("every top-30" in success.value for success in at.success)
+
+
+def test_bulk_pool_preview_does_not_change_pool_team_or_preview():
+    at = run_app_with_team("garchomp,tyranitar")
+    at = select_available_pool(at, ["dragonite", "togekiss"])
+
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+    at.button(key="matchup_swap_0").click().run()
+    assert not at.exception
+
+    before_preview = at.session_state["pending_swap"]
+    before_url = at.query_params["team"]
+
+    at.text_area(key="pool_paste").input("Dragonite, dragonite, Missingno").run()
+
+    assert not at.exception
+    assert at.multiselect(key="available_pokemon").value == [
+        "dragonite",
+        "togekiss",
+    ]
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+    assert at.query_params["team"] == before_url
+    assert at.session_state["pending_swap"] == before_preview
+    assert any(
+        "1 recognized species" in caption.value
+        and "1 repeated species" in caption.value
+        and "1 unrecognized entries" in caption.value
+        for caption in at.caption
+    )
+    assert any("Missingno" in warning.value for warning in at.warning)
+
+
+def test_bulk_pool_add_preserves_order_and_activates_custom_pool():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="available_pokemon").set_value(["togekiss", "dragonite"]).run()
+
+    at.text_area(key="pool_paste").input("Dragonite, Ferrothorn, Gyarados, Ferrothorn").run()
+    at.button(key="pool_add").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="available_pokemon").value == [
+        "togekiss",
+        "dragonite",
+        "ferrothorn",
+        "gyarados",
+    ]
+    assert at.radio(key="candidate_source").value == "My available Pokémon"
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+    assert any("Added 2 new Pokémon." in success.value for success in at.success)
+
+
+def test_bulk_pool_replace_accepts_showdown_roster():
+    at = run_app_with_team("garchomp,tyranitar")
+    at = select_available_pool(at, ["dragonite", "togekiss"])
+
+    at.radio(key="pool_input_format").set_value("Showdown roster").run()
+    at.text_area(key="pool_paste").input(
+        "Chompy (Garchomp) @ Choice Scarf\n- Earthquake\n\nFerrothorn @ Leftovers\n- Protect"
+    ).run()
+    at.button(key="pool_replace").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="available_pokemon").value == [
+        "garchomp",
+        "ferrothorn",
+    ]
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+    assert at.multiselect(key="moves_garchomp").value == []
+
+
+@pytest.mark.parametrize(
+    "contents",
+    ["", "Missingno, Not A Pokemon"],
+    ids=["empty-input", "unknown-only"],
+)
+def test_invalid_bulk_input_disables_actions_and_preserves_state(contents):
+    at = run_app_with_team("garchomp,tyranitar")
+    at = select_available_pool(at, ["dragonite", "togekiss"])
+    at = apply_first_matchup_swap(at)
+
+    at.button(key="matchup_swap_0").click().run()
+    assert not at.exception
+
+    before_team = list(at.multiselect(key="team").value)
+    before_undo = at.session_state["team_before_swap"]
+    before_preview = at.session_state["pending_swap"]
+
+    at.text_area(key="pool_paste").input(contents).run()
+
+    assert not at.exception
+    assert at.button(key="pool_add").disabled
+    assert at.button(key="pool_replace").disabled
+    assert at.multiselect(key="available_pokemon").value == [
+        "dragonite",
+        "togekiss",
+    ]
+    assert at.multiselect(key="team").value == before_team
+    assert at.session_state["team_before_swap"] == before_undo
+    assert at.session_state["pending_swap"] == before_preview
+
+
+@pytest.mark.parametrize("button_key", ["pool_add", "pool_replace"])
+def test_bulk_pool_apply_preserves_build_and_undo_but_clears_preview(button_key):
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+    at = apply_first_matchup_swap(at)
+
+    at.button(key="matchup_swap_0").click().run()
+    assert not at.exception
+
+    before_team = list(at.multiselect(key="team").value)
+    before_url = at.query_params["team"]
+    before_undo = at.session_state["team_before_swap"]
+
+    at.text_area(key="pool_paste").input("Dragonite, Togekiss").run()
+    at.button(key=button_key).click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == before_team
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.multiselect(key="locked_members").value == ["garchomp"]
+    assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
+    assert at.query_params["team"] == before_url
+    assert at.session_state["team_before_swap"] == before_undo
+    assert any(button.key == "undo_swap" for button in at.button)
+    assert not any(button.key == "confirm_swap_preview" for button in at.button)

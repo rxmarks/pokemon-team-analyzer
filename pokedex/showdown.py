@@ -36,10 +36,18 @@ def _parse_block(lines: list[str]) -> ShowdownMon | None:
     return ShowdownMon(species=normalize(species), moves=moves[:MAX_MOVES])
 
 
-def parse_showdown(paste: str) -> list[ShowdownMon]:
-    """Parse a Pokémon Showdown team export into at most 6 Pokémon."""
+def parse_showdown(
+    paste: str,
+    *,
+    max_members: int | None = MAX_TEAM_SIZE,
+) -> list[ShowdownMon]:
+    """Parse an export, defaulting to the team limit; None keeps all members."""
+    if max_members is not None and max_members < 0:
+        raise ValueError("max_members must be nonnegative or None.")
+
     blocks: list[list[str]] = []
     current: list[str] = []
+
     for raw in paste.splitlines():
         line = raw.strip()
         if line:
@@ -47,8 +55,10 @@ def parse_showdown(paste: str) -> list[ShowdownMon]:
         elif current:
             blocks.append(current)
             current = []
+
     if current:
         blocks.append(current)
 
     team = [mon for block in blocks if (mon := _parse_block(block)) is not None]
-    return team[:MAX_TEAM_SIZE]
+
+    return team if max_members is None else team[:max_members]
