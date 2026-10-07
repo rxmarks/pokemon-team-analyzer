@@ -171,3 +171,44 @@ def test_rejects_unknown_input_format():
             VALID_SPECIES,
             input_format="invalid",  # type: ignore[arg-type]
         )
+
+
+@pytest.mark.parametrize("input_format", ["names", "showdown"])
+def test_pool_resolves_aliases_and_deduplicates_identifiers(input_format):
+    names = ["MrMime", "Mr. Mime", "Nidoran♀", "Nidoran♂", "RotomWash"]
+    valid = {"mr-mime", "nidoran-f", "nidoran-m", "rotom-wash"}
+
+    separator = ", " if input_format == "names" else "\n\n"
+    contents = separator.join(names)
+
+    preview = parse_pool_import(
+        contents,
+        valid,
+        input_format=input_format,
+    )
+
+    assert preview.recognized == (
+        "mr-mime",
+        "nidoran-f",
+        "nidoran-m",
+        "rotom-wash",
+    )
+    assert preview.duplicates == ("mr-mime",)
+    assert preview.unrecognized == ()
+
+
+def test_pool_does_not_guess_ambiguous_gender_or_unknown_form():
+    preview = parse_pool_import(
+        "Nidoran, Rotom-Custom",
+        {"nidoran-f", "nidoran-m", "rotom", "rotom-wash"},
+    )
+
+    assert preview.recognized == ()
+    assert preview.unrecognized == ("Nidoran", "Rotom-Custom")
+
+
+def test_pool_rejects_alias_when_species_is_unavailable():
+    preview = parse_pool_import("RotomWash", {"rotom"})
+
+    assert preview.recognized == ()
+    assert preview.unrecognized == ("RotomWash",)

@@ -3,6 +3,7 @@ import unicodedata
 from dataclasses import dataclass, field
 
 from pokedex.config import MAX_MOVES, MAX_TEAM_SIZE
+from pokedex.pokemon_names import species_identifier
 
 _GENDER = re.compile(r"\s*\((?:M|F)\)\s*$")
 _SPECIES_IN_PARENS = re.compile(r"\(([^()]+)\)\s*$")
@@ -32,8 +33,9 @@ def _parse_block(lines: list[str]) -> ShowdownMon | None:
     header = _GENDER.sub("", header)
     match = _SPECIES_IN_PARENS.search(header)
     species = match.group(1) if match else header
+    species = species_identifier(species)
     moves = [normalize(_BRACKETS.sub("", line[1:])) for line in lines[1:] if line.startswith("-")]
-    return ShowdownMon(species=normalize(species), moves=moves[:MAX_MOVES])
+    return ShowdownMon(species=species_identifier(species), moves=moves[:MAX_MOVES])
 
 
 def parse_showdown(

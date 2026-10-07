@@ -144,3 +144,36 @@ def test_structured_export_rejects_competing_move_source():
 
     with pytest.raises(ValueError, match="separate move sets"):
         showdown_export(state, {"garchomp": ["ice-beam"]})
+
+
+@pytest.mark.parametrize(
+    ("species", "external_name"),
+    [
+        ("nidoran-f", "Nidoran-F"),
+        ("nidoran-m", "Nidoran-M"),
+        ("mr-mime", "Mr. Mime"),
+        ("farfetchd", "Farfetch’d"),
+        ("type-null", "Type: Null"),
+        ("rotom-wash", "Rotom-Wash"),
+    ],
+)
+def test_export_uses_explicit_species_name_and_round_trips(
+    species,
+    external_name,
+):
+    state = TeamState(
+        members=(
+            TeamMember(
+                species,
+                moves=("swords-dance", "unverified-move"),
+            ),
+        )
+    )
+
+    contents = showdown_export(state)
+
+    assert contents.splitlines()[0] == external_name
+
+    parsed = parse_showdown(contents)
+    assert parsed[0].species == species
+    assert parsed[0].moves == ["swords-dance", "unverified-move"]

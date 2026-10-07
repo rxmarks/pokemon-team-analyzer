@@ -1921,3 +1921,115 @@ def test_showdown_download_disabled_for_empty_team(
 
     assert not at.exception
     assert captured_showdown_download[-1] == ""
+
+
+@pytest.fixture
+def naming_species(monkeypatch):
+    additions = {
+        "mr-mime": ["psychic", "fairy"],
+        "nidoran-f": ["poison"],
+        "nidoran-m": ["poison"],
+        "rotom-wash": ["electric", "water"],
+        "farfetchd": ["normal", "flying"],
+        "type-null": ["normal"],
+    }
+
+    for name, types in additions.items():
+        monkeypatch.setitem(FAKE_TYPES, name, types)
+
+
+@pytest.mark.parametrize(
+    ("paste", "expected"),
+    [
+        (
+            "Nidoran♀\n- Earthquake\n\nNidoran♂\n- Ice Beam",
+            ["nidoran-f", "nidoran-m"],
+        ),
+        (
+            "Mimey (MrMime) (M) @ Leftovers\n- Earthquake\n\nRotomWash @ Leftovers\n- Ice Beam",
+            ["mr-mime", "rotom-wash"],
+        ),
+    ],
+    ids=["gender-symbols", "compact-aliases"],
+)
+def test_naming_showdown_import_resolves_species(
+    naming_species,
+    paste,
+    expected,
+):
+    at = run_app_with_team("garchomp,tyranitar")
+
+    at.text_area(key="showdown_paste").input(paste)
+    at.button(key="import_btn").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == expected
+    assert at.multiselect(key=f"moves_{expected[0]}").value == ["earthquake"]
+    assert at.multiselect(key=f"moves_{expected[1]}").value == ["ice-beam"]
+
+    url_team = at.query_params["team"]
+    assert url_team in (",".join(expected), [",".join(expected)])
+
+
+@pytest.mark.parametrize(
+    "input_format",
+    ["Pokémon names", "Showdown roster"],
+)
+def test_naming_bulk_pool_resolves_and_deduplicates_aliases(
+    naming_species,
+    input_format,
+):
+    at = run_app_with_team("garchomp,tyranitar")
+    at.radio(key="pool_input_format").set_value(input_format).run()
+
+    entries = ["MrMime", "Mr. Mime", "Nidoran♀", "Nidoran♂", "RotomWash"]
+    separator = ", " if input_format == "Pokémon names" else "\n\n"
+
+    at.text_area(key="pool_paste").input(separator.join(entries)).run()
+
+    assert not at.exception
+    assert any(
+        "4 recognized species" in caption.value and "1 repeated species" in caption.value
+        for caption in at.caption
+    )
+
+    at.button(key="pool_replace").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="available_pokemon").value == [
+        "mr-mime",
+        "nidoran-f",
+        "nidoran-m",
+        "rotom-wash",
+    ]
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+
+
+def test_naming_showdown_download_uses_mapped_species_names(
+    naming_species,
+    captured_showdown_download,
+):
+    species = [
+        "mr-mime",
+        "nidoran-f",
+        "nidoran-m",
+        "rotom-wash",
+        "farfetchd",
+        "type-null",
+    ]
+    at = run_app_with_team(",".join(species))
+
+    assert not at.exception
+
+    contents = captured_showdown_download[-1]
+    headers = [block.splitlines()[0] for block in contents.strip().split("\n\n")]
+
+    assert headers == [
+        "Mr. Mime",
+        "Nidoran-F",
+        "Nidoran-M",
+        "Rotom-Wash",
+        "Farfetch’d",
+        "Type: Null",
+    ]
+    assert [mon.species for mon in parse_showdown(contents)] == species

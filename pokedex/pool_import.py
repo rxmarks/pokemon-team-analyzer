@@ -5,7 +5,8 @@ from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Literal
 
-from pokedex.showdown import normalize, parse_showdown
+from pokedex.pokemon_names import resolve_species, species_identifier
+from pokedex.showdown import parse_showdown
 
 PoolInputFormat = Literal["names", "showdown"]
 
@@ -41,12 +42,15 @@ def parse_pool_import(
     seen_unrecognized: set[str] = set()
 
     for entry in entries:
-        species = normalize(entry)
+        species = resolve_species(entry, valid)
 
-        if species not in valid:
-            if species not in seen_unrecognized:
+        if species is None:
+            unknown_identifier = species_identifier(entry)
+
+            if unknown_identifier not in seen_unrecognized:
                 unrecognized.append(entry)
-                seen_unrecognized.add(species)
+                seen_unrecognized.add(unknown_identifier)
+
             continue
 
         if species in seen_valid:
