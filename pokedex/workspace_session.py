@@ -13,6 +13,7 @@ _TRANSIENT_KEYS = (
     "team_before_swap",
     "last_swap",
     "pending_swap",
+    "pending_swap_opponents",
     "import_ok",
     "import_skipped",
     "import_notes",

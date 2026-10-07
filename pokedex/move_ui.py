@@ -32,6 +32,7 @@ def moves_changed() -> None:
     state.pop("pending_loadout", None)
     state.pop("loadout_notice", None)
     state.pop("pending_swap", None)
+    state.pop("pending_swap_opponents", None)
     reconcile_team(state)
 
 

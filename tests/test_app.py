@@ -2340,3 +2340,167 @@ def test_swap_confirmation_rechecks_types_before_changing_build(monkeypatch):
         "Swap suggestions and applying swaps are unavailable" in warning.value
         for warning in at.warning
     )
+
+
+def test_partial_opponents_skip_matchup_ranking_only(monkeypatch):
+    overall_calls = []
+    original_suggest_swaps = analysis.suggest_swaps
+
+    def lookup_types(name, cache):
+        if name == "gyarados":
+            raise requests.ConnectionError("offline")
+        return FAKE_TYPES[name]
+
+    def tracked_overall_ranking(*args, **kwargs):
+        overall_calls.append(True)
+        return original_suggest_swaps(*args, **kwargs)
+
+    def unexpected_matchup_ranking(*args, **kwargs):
+        raise AssertionError("Incomplete opponents must not reach matchup ranking")
+
+    monkeypatch.setattr(fetch, "types_cache_first", lookup_types)
+    monkeypatch.setattr(analysis, "suggest_swaps", tracked_overall_ranking)
+    monkeypatch.setattr(
+        analysis,
+        "suggest_matchup_swaps",
+        unexpected_matchup_ranking,
+    )
+    st.cache_data.clear()
+
+    at = run_app_with_team("garchomp,tyranitar")
+    assert not at.exception
+
+    overall_calls.clear()
+    at.multiselect(key="opponent_team").set_value(["dragonite", "gyarados"]).run()
+
+    assert not at.exception
+    assert overall_calls
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+    assert at.multiselect(key="opponent_team").value == [
+        "dragonite",
+        "gyarados",
+    ]
+
+    best_swap = next(metric for metric in at.metric if metric.label == "Best swap")
+    assert best_swap.value != "Unavailable"
+
+    button_keys = [button.key for button in at.button if button.key]
+    assert any(key.startswith("swap_") for key in button_keys)
+    assert not any(key.startswith("matchup_swap_") for key in button_keys)
+
+    matchup_tab = at.tabs[3]
+    assert any(
+        "Partial opponent analysis: 1 of 2 selected opponents loaded." in warning.value
+        for warning in matchup_tab.warning
+    )
+    assert any(
+        "Matchup-specific swap suggestions are unavailable" in info.value
+        for info in matchup_tab.info
+    )
+    assert any(element.value == "#### Matchup grid" for element in matchup_tab.markdown)
+    assert any(element.value == "#### Opponent threat report" for element in matchup_tab.markdown)
+
+
+def test_matchup_confirmation_blocks_new_opponent_type_failure(monkeypatch):
+    failed_names = set()
+
+    def lookup_types(name, cache):
+        if name in failed_names:
+            raise requests.ConnectionError("offline")
+        return FAKE_TYPES[name]
+
+    monkeypatch.setattr(fetch, "types_cache_first", lookup_types)
+    st.cache_data.clear()
+
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="locked_members").set_value(["tyranitar"]).run()
+    at.multiselect(key="opponent_team").set_value(["dragonite", "gyarados"]).run()
+    at.checkbox(key="matchup_improvements_only").set_value(False).run()
+
+    assert not at.exception
+
+    buttons = [
+        button for button in at.button if button.key and button.key.startswith("matchup_swap_")
+    ]
+    assert buttons, "Expected matchup alternatives for the fixture team"
+
+    buttons[0].click().run()
+
+    assert not at.exception
+    assert at.session_state["pending_swap_opponents"] == (
+        "dragonite",
+        "gyarados",
+    )
+    assert at.button(key="confirm_swap_preview")
+
+    team_before = list(at.multiselect(key="team").value)
+    locks_before = list(at.multiselect(key="locked_members").value)
+
+    failed_names.add("gyarados")
+    st.cache_data.clear()
+    at.button(key="confirm_swap_preview").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == team_before
+    assert at.multiselect(key="locked_members").value == locks_before
+
+    for key in (
+        "pending_swap",
+        "pending_swap_opponents",
+        "team_before_swap",
+        "last_swap",
+    ):
+        with pytest.raises(KeyError):
+            at.session_state[key]
+
+    assert any(
+        "The matchup-derived swap was not applied" in warning.value for warning in at.warning
+    )
+
+
+def test_overall_swap_applies_despite_opponent_type_failure(monkeypatch):
+    failed_names = set()
+
+    def lookup_types(name, cache):
+        if name in failed_names:
+            raise requests.ConnectionError("offline")
+        return FAKE_TYPES[name]
+
+    monkeypatch.setattr(fetch, "types_cache_first", lookup_types)
+    st.cache_data.clear()
+
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="locked_members").set_value(["tyranitar"]).run()
+    at.multiselect(key="opponent_team").set_value(["dragonite", "gyarados"]).run()
+
+    assert not at.exception
+
+    buttons = [button for button in at.button if button.key and button.key.startswith("swap_")]
+    assert buttons, "Expected an overall swap for the fixture team"
+
+    buttons[0].click().run()
+
+    assert not at.exception
+    out_name, in_name = at.session_state["pending_swap"]
+
+    with pytest.raises(KeyError):
+        at.session_state["pending_swap_opponents"]
+
+    team_before = list(at.multiselect(key="team").value)
+    expected_team = [in_name if name == out_name else name for name in team_before]
+
+    failed_opponent = next(name for name in ("dragonite", "gyarados") if name not in expected_team)
+    failed_names.add(failed_opponent)
+    st.cache_data.clear()
+
+    at.button(key="confirm_swap_preview").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == expected_team
+    assert at.multiselect(key="locked_members").value == ["tyranitar"]
+    assert at.session_state["last_swap"] == (out_name, in_name)
+    assert at.button(key="undo_swap")
+
+    for key in ("pending_swap", "pending_swap_opponents"):
+        with pytest.raises(KeyError):
+            at.session_state[key]
