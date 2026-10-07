@@ -147,7 +147,8 @@ def test_apply_swap_replaces_one_member():
     before = list(at.multiselect(key="team").value)
 
     swap_buttons[0].click().run()
-
+    assert not at.exception
+    at.button(key="confirm_swap_preview").click().run()
     after = list(at.multiselect(key="team").value)
 
     assert not at.exception
@@ -316,7 +317,8 @@ def test_matchup_swap_button_updates_team_and_preserves_opponents():
     expected = [top["candidate"] if name == top["replaces"] else name for name in before]
 
     at.button(key="matchup_swap_0").click().run()
-
+    assert not at.exception
+    at.button(key="confirm_swap_preview").click().run()
     assert not at.exception
     assert at.multiselect(key="team").value == expected
     assert at.multiselect(key="opponent_team").value == opponents
@@ -369,3 +371,124 @@ def test_matchup_swap_explanations_render():
 
     assert explanation_tables
     assert explanation_tables[0]["Opponent"].tolist() == ["Ferrothorn"]
+
+
+def apply_first_matchup_swap(at):
+    """Preview and apply a targeted swap using the offline fixture."""
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+    assert not at.exception
+
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+    assert not at.exception
+
+    at.button(key="matchup_swap_0").click().run()
+    assert not at.exception
+
+    at.button(key="confirm_swap_preview").click().run()
+    assert not at.exception
+
+    return at
+
+
+def test_undo_swap_restores_team_and_url():
+    at = run_app_with_team("garchomp,tyranitar")
+    before = list(at.multiselect(key="team").value)
+
+    at = apply_first_matchup_swap(at)
+    assert at.multiselect(key="team").value != before
+
+    at.button(key="undo_swap").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == before
+    assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
+    assert not any(button.key == "undo_swap" for button in at.button)
+
+    url_team = at.query_params["team"]
+    assert url_team == ",".join(before) or url_team == [",".join(before)]
+
+
+def test_manual_team_edit_clears_undo():
+    at = run_app_with_team("garchomp,tyranitar")
+    at = apply_first_matchup_swap(at)
+
+    assert any(button.key == "undo_swap" for button in at.button)
+
+    at.multiselect(key="team").set_value(["dragonite"]).run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == ["dragonite"]
+    assert not any(button.key == "undo_swap" for button in at.button)
+
+
+def test_successful_import_clears_undo():
+    at = run_app_with_team("garchomp,tyranitar")
+    at = apply_first_matchup_swap(at)
+
+    at.text_area(key="showdown_paste").input(PASTE)
+    at.button(key="import_btn").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+    assert not any(button.key == "undo_swap" for button in at.button)
+
+
+def test_failed_import_preserves_undo():
+    at = run_app_with_team("garchomp,tyranitar")
+    at = apply_first_matchup_swap(at)
+    swapped_team = list(at.multiselect(key="team").value)
+
+    at.text_area(key="showdown_paste").input("Missingno @ Nothing")
+    at.button(key="import_btn").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == swapped_team
+    assert any(button.key == "undo_swap" for button in at.button)
+
+
+def test_swap_preview_does_not_change_team_or_url():
+    at = run_app_with_team("garchomp,tyranitar")
+    before = list(at.multiselect(key="team").value)
+    before_url = at.query_params["team"]
+
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+    at.button(key="matchup_swap_0").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == before
+    assert at.query_params["team"] == before_url
+    assert "Swap preview" in [header.value for header in at.subheader]
+    assert any(button.key == "confirm_swap_preview" for button in at.button)
+
+
+def test_cancel_preview_preserves_team():
+    at = run_app_with_team("garchomp,tyranitar")
+    before = list(at.multiselect(key="team").value)
+
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+    at.button(key="matchup_swap_0").click().run()
+    at.button(key="cancel_swap_preview").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == before
+    assert not any(button.key == "confirm_swap_preview" for button in at.button)
+    assert not any(button.key == "undo_swap" for button in at.button)
+
+
+def test_manual_team_edit_clears_preview():
+    at = run_app_with_team("garchomp,tyranitar")
+
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+    at.button(key="matchup_swap_0").click().run()
+
+    assert not at.exception
+    assert any(button.key == "confirm_swap_preview" for button in at.button)
+
+    at.multiselect(key="team").set_value(["dragonite"]).run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == ["dragonite"]
+    assert not any(button.key == "confirm_swap_preview" for button in at.button)

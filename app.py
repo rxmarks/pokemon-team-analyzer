@@ -116,12 +116,15 @@ with st.sidebar:
         "- **Opponent matchups:** compare your team against a chosen opponent team\n"
         "- **Meta threats:** matchups vs. top Smogon usage\n"
         "- **Stats:** role and speed checks\n"
-        "- **Swaps:** one-click replacements that fix the most weaknesses\n\n"
+        "- **Swaps:** preview replacements, apply changes, and undo the last swap\n\n"
         "**Data:** [PokeAPI](https://pokeapi.co) · "
         "[Smogon usage stats](https://www.smogon.com/stats/)\n\n"
         "[GitHub repo](https://github.com/rxmarks/pokemon-team-analyzer)"
     )
-    st.caption("Type-based analysis only; ignores abilities, items, moves, and Tera.")
+    st.caption(
+        "Type-based matchup rankings; no battle simulation. "
+        "The Moves tab separately analyzes selected move coverage."
+    )
 
 
 try:
@@ -151,13 +154,60 @@ def import_showdown() -> None:
     st.session_state["import_ok"] = bool(found)
 
     if found:
+        clear_swap_history()
         st.session_state["team"] = found[:MAX_TEAM_SIZE]
 
 
+def clear_swap_history() -> None:
+    """Invalidate swap state when the user directly edits or imports a team."""
+    st.session_state.pop("team_before_swap", None)
+    st.session_state.pop("last_swap", None)
+    st.session_state.pop("pending_swap", None)
+
+
 def apply_swap(out_name: str, in_name: str) -> None:
-    st.session_state["team"] = [
-        in_name if name == out_name else name for name in st.session_state["team"]
-    ]
+    """Apply a valid replacement and preserve the previous team for undo."""
+    current_team = list(st.session_state["team"])
+
+    if out_name not in current_team or in_name in current_team:
+        return
+
+    st.session_state["team_before_swap"] = current_team
+    st.session_state["last_swap"] = (out_name, in_name)
+    st.session_state["team"] = [in_name if name == out_name else name for name in current_team]
+
+
+def stage_swap(out_name: str, in_name: str) -> None:
+    """Stage a valid swap without changing the current team."""
+    current_team = list(st.session_state["team"])
+
+    if out_name not in current_team or in_name in current_team:
+        return
+
+    st.session_state["pending_swap"] = (out_name, in_name)
+
+
+def cancel_swap_preview() -> None:
+    """Dismiss the proposed swap without changing the team."""
+    st.session_state.pop("pending_swap", None)
+
+
+def confirm_swap_preview() -> None:
+    """Apply the staged swap through the shared undo-aware callback."""
+    pending_swap = st.session_state.pop("pending_swap", None)
+
+    if pending_swap is not None:
+        apply_swap(*pending_swap)
+
+
+def undo_swap() -> None:
+    """Restore the team immediately before the most recent swap."""
+    previous_team = st.session_state.pop("team_before_swap", None)
+    st.session_state.pop("pending_swap", None)
+    if previous_team is not None:
+        st.session_state["team"] = list(previous_team)
+
+    st.session_state.pop("last_swap", None)
 
 
 def load_team_types(names: list[str], error_context: str) -> dict[str, list[str]]:
@@ -188,8 +238,18 @@ names = st.multiselect(
     max_selections=MAX_TEAM_SIZE,
     key="team",
     format_func=display_name,
+    on_change=clear_swap_history,
 )
 
+if "team_before_swap" in st.session_state:
+    out_name, in_name = st.session_state["last_swap"]
+    st.caption(f"Last swap: {display_name(out_name)} → {display_name(in_name)}")
+    st.button(
+        "Undo last swap",
+        key="undo_swap",
+        on_click=undo_swap,
+        help="Restore your team before the most recent swap.",
+    )
 
 with st.expander("Import from Pokémon Showdown"):
     st.text_area(
@@ -252,6 +312,88 @@ st.download_button(
     mime="text/plain",
     help="Download this team's Pokémon names in Pokémon Showdown import format.",
 )
+
+
+pending_swap = st.session_state.get("pending_swap")
+
+if pending_swap is not None:
+    out_name, in_name = pending_swap
+
+    if out_name not in team or in_name in team:
+        cancel_swap_preview()
+    else:
+        st.subheader("Swap preview")
+        st.write(f"Replace {display_name(out_name)} with {display_name(in_name)}.")
+
+        try:
+            proposed_types = cached_types(in_name)
+        except requests.RequestException:
+            st.warning(
+                f"Couldn't load {display_name(in_name)} for the preview. "
+                "Cancel or try again shortly."
+            )
+            st.button(
+                "Cancel preview",
+                key="cancel_swap_preview",
+                on_click=cancel_swap_preview,
+            )
+        else:
+            proposed_team = {
+                name if name != out_name else in_name: (
+                    types if name != out_name else proposed_types
+                )
+                for name, types in team.items()
+            }
+
+            current_badness = team_badness(team, chart)
+            proposed_badness = team_badness(proposed_team, chart)
+            current_table = team_table(team, chart)
+            proposed_table = team_table(proposed_team, chart)
+            current_weaknesses = int(current_table["# weak"].sum())
+            proposed_weaknesses = int(proposed_table["# weak"].sum())
+
+            preview_comparison = pd.DataFrame(
+                [
+                    {
+                        "Metric": "Overall team badness",
+                        "Current": current_badness,
+                        "Proposed": proposed_badness,
+                        "Improvement": current_badness - proposed_badness,
+                    },
+                    {
+                        "Metric": "Weakness pairs",
+                        "Current": current_weaknesses,
+                        "Proposed": proposed_weaknesses,
+                        "Improvement": current_weaknesses - proposed_weaknesses,
+                    },
+                ]
+            )
+
+            st.dataframe(
+                preview_comparison,
+                width="stretch",
+                hide_index=True,
+            )
+            st.caption(
+                "Positive improvement values are better. These are overall team "
+                "metrics; opponent-specific tradeoffs appear in the matchup explanations."
+            )
+            st.write("Proposed team: " + ", ".join(display_name(name) for name in proposed_team))
+
+            apply_col, cancel_col = st.columns(2)
+            with apply_col:
+                st.button(
+                    "Apply swap",
+                    key="confirm_swap_preview",
+                    on_click=confirm_swap_preview,
+                    type="primary",
+                )
+            with cancel_col:
+                st.button(
+                    "Cancel preview",
+                    key="cancel_swap_preview",
+                    on_click=cancel_swap_preview,
+                )
 
 
 table = team_table(team, chart)
@@ -600,9 +742,9 @@ with opponent_matchups:
                         )
 
                     st.button(
-                        swap_label,
+                        f"Preview: {swap_label}",
                         key=f"matchup_swap_{index}",
-                        on_click=apply_swap,
+                        on_click=stage_swap,
                         args=(out_name, in_name),
                     )
 
@@ -716,17 +858,24 @@ with swaps_tab:
             gain = getattr(row, SWAP_GAIN)
 
             st.button(
-                (f"{display_name(out_name)} → {display_name(in_name)} (−{gain:g} badness)"),
+                (
+                    f"Preview: {display_name(out_name)} → {display_name(in_name)} "
+                    f"(−{gain:g} badness)"
+                ),
                 key=f"swap_{index}",
-                on_click=apply_swap,
+                on_click=stage_swap,
                 args=(out_name, in_name),
             )
 
-        st.caption("Applying a swap updates the team, the URL, and every tab.")
+        st.caption(
+            "Preview a replacement before applying it. Applying updates your team, "
+            "the URL, and every tab; Undo restores the previous team."
+        )
 
     with st.expander("How to read swap suggestions"):
         st.markdown(
-            "Each row replaces one team member with a candidate. 'New badness' is "
-            "the team's score after the swap, and lower is better. Use the buttons "
-            "to try a swap. The URL updates, so you can share the result."
+            "Each row proposes replacing one team member with a candidate. "
+            "'New badness' is the team's score after the swap; lower is better. "
+            "Preview a suggestion to compare overall team metrics, then apply "
+            "or cancel it. Undo restores the team before your most recent swap."
         )
