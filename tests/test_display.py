@@ -5,6 +5,7 @@ from pokedex.display import (
     TYPE_COLORS,
     color_multiplier,
     display_name,
+    format_badness_change,
     format_multiplier,
     type_badge,
     type_badges,
@@ -53,3 +54,19 @@ def test_format_multiplier(value, label):
 )
 def test_color_multiplier(value, expected):
     assert expected in color_multiplier(value)
+
+
+@pytest.mark.parametrize(
+    ("improvement", "expected"),
+    [
+        (2, "−2"),
+        (0, "0"),
+        (-2, "+2"),
+        (1.5, "−1.5"),
+        (-1.5, "+1.5"),
+        (0.0, "0"),
+        (-0.0, "0"),
+    ],
+)
+def test_format_badness_change(improvement, expected):
+    assert format_badness_change(improvement) == expected
