@@ -153,6 +153,8 @@ def clear_swap_history() -> None:
     """Invalidate undo and preview after a direct team edit or import."""
     st.session_state.pop("team_before_swap", None)
     st.session_state.pop("last_swap", None)
+    st.session_state.pop("pending_loadout", None)
+    st.session_state.pop("loadout_notice", None)
     st.session_state.pop("pending_swap", None)
     reconcile_team(st.session_state)
 

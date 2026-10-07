@@ -27,8 +27,11 @@ def pretty(move: str) -> str:
 
 
 def moves_changed() -> None:
-    """Update the structured snapshot after a move selection changes."""
+    """Refresh the build and dismiss previews after a manual move edit."""
     state = cast(MutableMapping[str, Any], st.session_state)
+    state.pop("pending_loadout", None)
+    state.pop("loadout_notice", None)
+    state.pop("pending_swap", None)
     reconcile_team(state)
 
 
