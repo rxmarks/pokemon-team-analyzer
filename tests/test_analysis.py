@@ -2,6 +2,7 @@ import pytest
 
 from pokedex.analysis import (
     MATCHUP_SWAP_COLUMNS,
+    SWAP_COLUMNS,
     best_stab_multiplier,
     coverage_gaps,
     matchup_label,
@@ -443,3 +444,102 @@ def test_matchup_swaps_worse_alternative_is_not_improvement(chart):
     )
 
     assert filtered.empty
+
+
+def test_generic_swaps_do_not_replace_locked_member(chart):
+    team = {
+        "squirtle": ["water"],
+        "bulbasaur": ["grass"],
+    }
+    candidates = {"charmander": ["fire"]}
+
+    result = suggest_swaps(
+        team,
+        candidates,
+        chart,
+        locked_members={"squirtle"},
+    )
+
+    assert not result.empty
+    assert set(result["replaces"]) == {"bulbasaur"}
+
+
+def test_generic_swaps_empty_when_all_members_locked(chart):
+    team = {"squirtle": ["water"]}
+
+    result = suggest_swaps(
+        team,
+        {"charmander": ["fire"]},
+        chart,
+        locked_members=set(team),
+    )
+
+    assert result.empty
+    assert list(result.columns) == SWAP_COLUMNS
+
+
+def test_matchup_swaps_do_not_replace_locked_member(chart):
+    team = {
+        "squirtle": ["water"],
+        "bulbasaur": ["grass"],
+    }
+    candidates = {"charmander": ["fire"]}
+    opponents = {"opponent": ["grass"]}
+
+    result = suggest_matchup_swaps(
+        team,
+        candidates,
+        opponents,
+        chart,
+        locked_members={"squirtle"},
+    )
+
+    assert not result.empty
+    assert set(result["replaces"]) == {"bulbasaur"}
+
+
+def test_matchup_swaps_empty_when_all_members_locked(chart):
+    team = {"squirtle": ["water"]}
+
+    result = suggest_matchup_swaps(
+        team,
+        {"charmander": ["fire"]},
+        {"opponent": ["grass"]},
+        chart,
+        locked_members=set(team),
+    )
+
+    assert result.empty
+    assert list(result.columns) == MATCHUP_SWAP_COLUMNS
+
+
+def test_unknown_locks_do_not_change_generic_results(chart):
+    team = {"squirtle": ["water"]}
+    candidates = {"charmander": ["fire"]}
+
+    baseline = suggest_swaps(team, candidates, chart)
+    result = suggest_swaps(
+        team,
+        candidates,
+        chart,
+        locked_members={"not-on-team"},
+    )
+
+    assert result.equals(baseline)
+
+
+def test_unknown_locks_do_not_change_matchup_results(chart):
+    team = {"squirtle": ["water"]}
+    candidates = {"charmander": ["fire"]}
+    opponents = {"opponent": ["grass"]}
+
+    baseline = suggest_matchup_swaps(team, candidates, opponents, chart)
+    result = suggest_matchup_swaps(
+        team,
+        candidates,
+        opponents,
+        chart,
+        locked_members={"not-on-team"},
+    )
+
+    assert result.equals(baseline)
