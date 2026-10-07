@@ -32,6 +32,8 @@ from pokedex.loadout_ui import render_loadout_suggestions
 from pokedex.move_ui import render_move_coverage
 from pokedex.pool_import import PoolImportPreview, parse_pool_import
 from pokedex.showdown import parse_showdown
+from pokedex.swap_explanation import compare_type_analysis
+from pokedex.swap_explanation_ui import render_swap_explanation
 from pokedex.team_files import dump_team, load_team
 from pokedex.team_session import reconcile_team, restore_team, snapshot_team
 from pokedex.team_state import TeamMember, TeamState
@@ -938,6 +940,15 @@ if pending_swap is not None:
             )
             st.write("Proposed team: " + ", ".join(display_name(name) for name in proposed_team))
 
+            explanation = compare_type_analysis(
+                current_team=team,
+                proposed_team=proposed_team,
+                current_table=current_table,
+                proposed_table=proposed_table,
+                current_gaps=coverage_gaps(team, chart),
+                proposed_gaps=coverage_gaps(proposed_team, chart),
+            )
+            render_swap_explanation(explanation)
             apply_col, cancel_col = st.columns(2)
             with apply_col:
                 st.button(
