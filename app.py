@@ -27,15 +27,13 @@ from pokedex.fetch import (
     stats_cache_first,
     types_cache_first,
 )
-from pokedex.loadout import suggest_loadouts
 from pokedex.loadout_ui import render_loadout_suggestions
-from pokedex.move_ui import cached_learnable_moves, cached_move_cache, render_move_coverage
+from pokedex.move_ui import render_move_coverage
 from pokedex.showdown import parse_showdown
 from pokedex.threat_ui import cached_pokemon, render_meta_threats
 from pokedex.types import Team, TypeChart
 
 st.set_page_config(page_title="Pokémon Team Analyzer", page_icon="🔴", layout="wide")
-
 
 SWAP_OUT = "replaces"
 SWAP_IN = "candidate"
@@ -44,7 +42,7 @@ SWAP_BUTTONS = 5
 
 
 @st.cache_data
-def cached_chart() -> dict:
+def cached_chart() -> TypeChart:
     return load_type_chart()
 
 
@@ -59,6 +57,7 @@ def cached_matchup_swaps(
     opponent_team: Team,
     chart: TypeChart,
     improvements_only: bool = False,
+    locked_members: frozenset[str] = frozenset(),
 ) -> pd.DataFrame:
     return suggest_matchup_swaps(
         team,
@@ -66,6 +65,7 @@ def cached_matchup_swaps(
         opponent_team,
         chart,
         improvements_only=improvements_only,
+        locked_members=set(locked_members),
     )
 
 
@@ -85,7 +85,7 @@ def cached_stats(name: str) -> dict[str, int]:
 
 
 @st.cache_data
-def cached_candidates() -> dict[str, list[str]]:
+def cached_candidates() -> Team:
     return {
         name: data["types"]
         for name, data in cached_pokemon().items()
@@ -105,7 +105,6 @@ def cached_sprite(name: str) -> str | None:
 st.title("Pokémon Team Analyzer")
 st.caption("Type-coverage analysis and swap suggestions. Data from PokeAPI.")
 
-
 with st.sidebar:
     st.header("About")
     st.markdown(
@@ -113,10 +112,10 @@ with st.sidebar:
         "- **Defense:** damage multipliers per attack type\n"
         "- **Offense:** types your team can't hit super-effectively\n"
         "- **Moves:** coverage from actual moves, plus suggested loadouts\n"
-        "- **Opponent matchups:** compare your team against a chosen opponent team\n"
+        "- **Opponent matchups:** compare against a chosen opponent team\n"
         "- **Meta threats:** matchups vs. top Smogon usage\n"
         "- **Stats:** role and speed checks\n"
-        "- **Swaps:** preview replacements, apply changes, and undo the last swap\n\n"
+        "- **Swaps:** lock members, preview replacements, apply, and undo\n\n"
         "**Data:** [PokeAPI](https://pokeapi.co) · "
         "[Smogon usage stats](https://www.smogon.com/stats/)\n\n"
         "[GitHub repo](https://github.com/rxmarks/pokemon-team-analyzer)"
@@ -125,7 +124,6 @@ with st.sidebar:
         "Type-based matchup rankings; no battle simulation. "
         "The Moves tab separately analyzes selected move coverage."
     )
-
 
 try:
     all_names = cached_names()
@@ -137,12 +135,29 @@ except requests.RequestException:
 def team_from_url(valid: list[str]) -> list[str]:
     raw = st.query_params.get("team")
     if not raw:
-        return DEFAULT_TEAM
+        return list(DEFAULT_TEAM)
 
     valid_set = set(valid)
     picked = [name.strip().lower() for name in raw.split(",")]
     cleaned = list(dict.fromkeys(name for name in picked if name in valid_set))
-    return cleaned[:MAX_TEAM_SIZE] or DEFAULT_TEAM
+    return cleaned[:MAX_TEAM_SIZE] or list(DEFAULT_TEAM)
+
+
+def clear_swap_history() -> None:
+    """Invalidate swap state and remove locks for members no longer on the team."""
+    st.session_state.pop("team_before_swap", None)
+    st.session_state.pop("last_swap", None)
+    st.session_state.pop("pending_swap", None)
+
+    current_team = set(st.session_state.get("team", []))
+    st.session_state["locked_members"] = [
+        name for name in st.session_state.get("locked_members", []) if name in current_team
+    ]
+
+
+def locks_changed() -> None:
+    """Dismiss an existing preview when replacement restrictions change."""
+    st.session_state.pop("pending_swap", None)
 
 
 def import_showdown() -> None:
@@ -154,22 +169,16 @@ def import_showdown() -> None:
     st.session_state["import_ok"] = bool(found)
 
     if found:
-        clear_swap_history()
         st.session_state["team"] = found[:MAX_TEAM_SIZE]
-
-
-def clear_swap_history() -> None:
-    """Invalidate swap state when the user directly edits or imports a team."""
-    st.session_state.pop("team_before_swap", None)
-    st.session_state.pop("last_swap", None)
-    st.session_state.pop("pending_swap", None)
+        clear_swap_history()
 
 
 def apply_swap(out_name: str, in_name: str) -> None:
-    """Apply a valid replacement and preserve the previous team for undo."""
+    """Apply a valid unlocked replacement and preserve one-step undo."""
     current_team = list(st.session_state["team"])
+    locks = set(st.session_state.get("locked_members", []))
 
-    if out_name not in current_team or in_name in current_team:
+    if out_name not in current_team or in_name in current_team or out_name in locks:
         return
 
     st.session_state["team_before_swap"] = current_team
@@ -178,10 +187,11 @@ def apply_swap(out_name: str, in_name: str) -> None:
 
 
 def stage_swap(out_name: str, in_name: str) -> None:
-    """Stage a valid swap without changing the current team."""
+    """Stage a valid replacement of an unlocked member."""
     current_team = list(st.session_state["team"])
+    locks = set(st.session_state.get("locked_members", []))
 
-    if out_name not in current_team or in_name in current_team:
+    if out_name not in current_team or in_name in current_team or out_name in locks:
         return
 
     st.session_state["pending_swap"] = (out_name, in_name)
@@ -201,18 +211,23 @@ def confirm_swap_preview() -> None:
 
 
 def undo_swap() -> None:
-    """Restore the team immediately before the most recent swap."""
-    previous_team = st.session_state.pop("team_before_swap", None)
+    """Restore the previous team and retain only locks valid for that team."""
     st.session_state.pop("pending_swap", None)
+    previous_team = st.session_state.pop("team_before_swap", None)
+
     if previous_team is not None:
-        st.session_state["team"] = list(previous_team)
+        restored_team = list(previous_team)
+        st.session_state["team"] = restored_team
+        st.session_state["locked_members"] = [
+            name for name in st.session_state.get("locked_members", []) if name in restored_team
+        ]
 
     st.session_state.pop("last_swap", None)
 
 
-def load_team_types(names: list[str], error_context: str) -> dict[str, list[str]]:
-    """Fetch selected Pokémon types and show a friendly error on failure."""
-    selected_team: dict[str, list[str]] = {}
+def load_team_types(names: list[str], error_context: str) -> Team:
+    """Fetch selected Pokémon types and show a friendly warning on failure."""
+    selected_team: Team = {}
 
     for name in names:
         try:
@@ -231,6 +246,13 @@ if "team" not in st.session_state:
 if "opponent_team" not in st.session_state:
     st.session_state["opponent_team"] = []
 
+if "locked_members" not in st.session_state:
+    st.session_state["locked_members"] = []
+
+# Reconcile before constructing the lock widget, never after it is instantiated.
+st.session_state["locked_members"] = [
+    name for name in st.session_state["locked_members"] if name in st.session_state["team"]
+]
 
 names = st.multiselect(
     "Pick up to 6 Pokémon (type to search)",
@@ -239,6 +261,18 @@ names = st.multiselect(
     key="team",
     format_func=display_name,
     on_change=clear_swap_history,
+)
+
+st.multiselect(
+    "Keep these Pokémon on the team",
+    options=names,
+    key="locked_members",
+    format_func=display_name,
+    on_change=locks_changed,
+    help=(
+        "Locked Pokémon still contribute to analysis, but neither swap engine "
+        "can recommend replacing them."
+    ),
 )
 
 if "team_before_swap" in st.session_state:
@@ -269,18 +303,15 @@ with st.expander("Import from Pokémon Showdown"):
         if skipped:
             st.warning("Skipped (not found in PokeAPI): " + ", ".join(skipped))
 
-
 if names:
     st.query_params["team"] = ",".join(names)
     st.caption("The page URL now links to this team. Copy it to share.")
 else:
     st.query_params.pop("team", None)
 
-
 if not names:
     st.info("Pick at least one Pokémon to start.")
     st.stop()
-
 
 chart = cached_chart()
 
@@ -291,6 +322,8 @@ if not team:
     st.error("Couldn't load any Pokémon for your team. Try again in a moment.")
     st.stop()
 
+locked_members = set(st.session_state["locked_members"])
+all_members_locked = bool(team) and set(team) <= locked_members
 
 st.subheader("Team")
 cols = st.columns(MAX_TEAM_SIZE)
@@ -304,6 +337,8 @@ for col, (name, types) in zip(cols, team.items(), strict=False):
         st.markdown(f"**{display_name(name)}**")
         st.markdown(type_badges(types), unsafe_allow_html=True)
 
+        if name in locked_members:
+            st.caption("Locked")
 
 st.download_button(
     "Download Showdown team",
@@ -313,13 +348,12 @@ st.download_button(
     help="Download this team's Pokémon names in Pokémon Showdown import format.",
 )
 
-
 pending_swap = st.session_state.get("pending_swap")
 
 if pending_swap is not None:
     out_name, in_name = pending_swap
 
-    if out_name not in team or in_name in team:
+    if out_name not in team or in_name in team or out_name in locked_members:
         cancel_swap_preview()
     else:
         st.subheader("Swap preview")
@@ -395,11 +429,9 @@ if pending_swap is not None:
                     on_click=cancel_swap_preview,
                 )
 
-
 table = team_table(team, chart)
 member_cols = list(team)
 gaps = coverage_gaps(team, chart)
-
 
 try:
     with st.spinner("Fetching base stats..."):
@@ -408,30 +440,22 @@ except requests.RequestException:
     st.error("Couldn't load base stats from PokeAPI. Try again in a moment.")
     st.stop()
 
-
 candidates = cached_candidates()
 if not candidates:
     st.error("No candidates loaded. Check that data/pokemon.json exists and isn't empty.")
     st.stop()
 
-
 with st.spinner("Ranking swap candidates..."):
-    swaps = suggest_swaps(team, candidates, chart)
-
-
-try:
-    with st.spinner("Building move loadouts..."):
-        learnsets = {name: cached_learnable_moves(name) for name in team}
-        move_cache = cached_move_cache()
-        loadouts = suggest_loadouts(team, learnsets, team_stats, move_cache, chart)
-except requests.RequestException:
-    loadouts = {}
-
+    swaps = suggest_swaps(
+        team,
+        candidates,
+        chart,
+        locked_members=locked_members,
+    )
 
 shared_weak = int(((table[member_cols] >= 2).sum(axis=1) >= 2).sum())
 quad_weak = int((table[member_cols] >= 4).to_numpy().sum())
 best_swap = f"−{swaps[SWAP_GAIN].iloc[0]:g}" if not swaps.empty else "None"
-
 
 m1, m2, m3, m4, m5 = st.columns(5)
 
@@ -458,9 +482,8 @@ m4.metric(
 m5.metric(
     "Best swap",
     best_swap,
-    help="Badness drop from the top-ranked single swap.",
+    help="Badness drop from the top-ranked eligible single swap.",
 )
-
 
 defense, offense, moves, opponent_matchups, threats, stats_tab, swaps_tab = st.tabs(
     [
@@ -473,7 +496,6 @@ defense, offense, moves, opponent_matchups, threats, stats_tab, swaps_tab = st.t
         "Swaps",
     ]
 )
-
 
 with defense:
     styled = (
@@ -493,7 +515,6 @@ with defense:
             "resists, 0 means immune. 'total' sums the row across your team."
         )
 
-
 with offense:
     if gaps:
         st.warning("No super-effective coverage against these types:")
@@ -508,11 +529,9 @@ with offense:
             "tab accounts for actual moves."
         )
 
-
 with moves:
     render_move_coverage(team, chart)
     render_loadout_suggestions(team, chart, team_stats)
-
 
 with opponent_matchups:
     st.subheader("Opponent Matchups")
@@ -560,10 +579,11 @@ with opponent_matchups:
 
             st.markdown("#### Matchup grid")
             st.dataframe(matchups, width="stretch")
+
             st.markdown("#### Matchup-specific swap suggestions")
             st.caption(
                 "Ranked by lower threat pressure, then higher matchup balance. "
-                "Overall team health breaks ties. These are type-only rankings."
+                "Overall team health breaks ties. Locked members cannot be replaced."
             )
 
             improvements_only = st.checkbox(
@@ -585,9 +605,12 @@ with opponent_matchups:
                     opponent_team,
                     chart,
                     improvements_only=improvements_only,
+                    locked_members=frozenset(locked_members),
                 )
 
-            if not eligible_candidates:
+            if all_members_locked:
+                st.info("All team members are locked. Unlock one to see swap suggestions.")
+            elif not eligible_candidates:
                 st.info("No eligible single swaps are available.")
             elif matchup_swaps.empty:
                 st.info(
@@ -623,7 +646,9 @@ with opponent_matchups:
                         ),
                         "matchup_balance": st.column_config.NumberColumn(
                             "Matchup balance",
-                            help="Total native-type pressure across both teams. Higher is better.",
+                            help=(
+                                "Total native-type pressure across both teams. Higher is better."
+                            ),
                         ),
                         "new_badness": st.column_config.NumberColumn(
                             "New badness",
@@ -647,7 +672,9 @@ with opponent_matchups:
                         ),
                         "weakness_improvement": st.column_config.NumberColumn(
                             "Weakness improvement",
-                            help="Current weakness count minus proposed count. Positive is better.",
+                            help=(
+                                "Current weakness count minus proposed count. Positive is better."
+                            ),
                         ),
                     },
                 )
@@ -773,12 +800,12 @@ with opponent_matchups:
                     "threat_score": st.column_config.NumberColumn(
                         "Threat score",
                         help=(
-                            "Members threatened minus available answers. "
+                            "Members threatened minus super-effective attackers. "
                             "Higher values are more concerning."
                         ),
                     ),
                     "weak_members": st.column_config.TextColumn("Threatens"),
-                    "answers": st.column_config.TextColumn("Answered by"),
+                    "answers": st.column_config.TextColumn("Super-effective attackers"),
                 },
             )
 
@@ -790,15 +817,13 @@ with opponent_matchups:
                     "- **Even:** Both Pokémon have equal native-type pressure.\n"
                     "- **Risky:** The opponent has stronger native-type pressure "
                     "against your Pokémon.\n\n"
-                    "This is a type-only heuristic. It does not yet account for "
+                    "This is a type-only heuristic. It does not account for "
                     "specific moves, abilities, held items, base stats, Speed, "
                     "Tera types, switching, or competitive battle formats."
                 )
 
-
 with threats:
     render_meta_threats(team, chart)
-
 
 with stats_tab:
     st.dataframe(pd.DataFrame(team_stats).T, width="stretch")
@@ -813,16 +838,16 @@ with stats_tab:
     with st.expander("How to read the stat check"):
         st.markdown(
             "Rows are your Pokémon and columns are base stats. Warnings flag a "
-            "team that lacks fast members, or leans entirely physical or special, "
-            "which makes it easy to wall."
+            "team that lacks fast members, or leans entirely physical or special."
         )
-
 
 with swaps_tab:
     st.caption(f"Searching {len(candidates)} Pokémon with base stat total {MIN_BST}+.")
 
-    if swaps.empty:
-        st.success("No single swap improves this team.")
+    if all_members_locked:
+        st.info("All team members are locked. Unlock one to see swap suggestions.")
+    elif swaps.empty:
+        st.info("No eligible single swaps are available.")
     else:
         shown = swaps.copy()
         shown.insert(0, "sprite", [cached_sprite(name) for name in shown[SWAP_IN]])
@@ -841,11 +866,11 @@ with swaps_tab:
                 ),
                 SWAP_GAIN: st.column_config.NumberColumn(
                     "Improvement",
-                    help="Badness drop vs. current team.",
+                    help="Badness drop vs. current team. Negative values mean worse badness.",
                 ),
                 "weak_total": st.column_config.NumberColumn(
                     "Weakness total",
-                    help=("Sum of super-effective weaknesses; tiebreaker, lower is better."),
+                    help="Number of weak attack-type/member pairs. Lower is better.",
                 ),
             },
         )
@@ -874,8 +899,9 @@ with swaps_tab:
 
     with st.expander("How to read swap suggestions"):
         st.markdown(
-            "Each row proposes replacing one team member with a candidate. "
+            "Each row proposes replacing an unlocked team member with a candidate. "
             "'New badness' is the team's score after the swap; lower is better. "
-            "Preview a suggestion to compare overall team metrics, then apply "
-            "or cancel it. Undo restores the team before your most recent swap."
+            "The table ranks eligible alternatives, which may include non-improvements. "
+            "Preview a suggestion, then apply or cancel it. Undo restores the team "
+            "before your most recent swap."
         )

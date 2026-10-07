@@ -155,8 +155,14 @@ def suggest_swaps(
     candidates: Team,
     type_chart: TypeChart,
     top_n: int = TOP_N_SWAPS,
+    *,
+    locked_members: set[str] | None = None,
 ) -> pd.DataFrame:
     """For each candidate, find the generic best member to replace."""
+    replaceable_names = [name for name in team if name not in (locked_members or set())]
+
+    if not replaceable_names or top_n <= 0:
+        return pd.DataFrame(columns=SWAP_COLUMNS)
     all_types = list(type_chart)
     profiles = {name: member_profile(types, type_chart) for name, types in team.items()}
     coverages = {name: member_coverage(types, type_chart) for name, types in team.items()}
@@ -176,7 +182,7 @@ def suggest_swaps(
         candidate_coverage = member_coverage(candidate_types, type_chart)
         best: dict[str, Any] | None = None
 
-        for replaced_name in team:
+        for replaced_name in replaceable_names:
             remaining_names = [member_name for member_name in team if member_name != replaced_name]
             score = score_team(
                 [profiles[name] for name in remaining_names] + [candidate_profile],
@@ -431,11 +437,15 @@ def suggest_matchup_swaps(
     top_n: int = TOP_N_SWAPS,
     *,
     improvements_only: bool = False,
+    locked_members: set[str] | None = None,
 ) -> pd.DataFrame:
     """Rank swaps using precomputed type profiles and opponent contributions."""
     if not team or not opponent_team or top_n <= 0:
         return pd.DataFrame(columns=MATCHUP_SWAP_COLUMNS)
+    replaceable_names = [name for name in team if name not in (locked_members or set())]
 
+    if not replaceable_names:
+        return pd.DataFrame(columns=MATCHUP_SWAP_COLUMNS)
     all_types = list(type_chart)
     member_names = list(team)
     profiles = {name: member_profile(types, type_chart) for name, types in team.items()}
@@ -487,7 +497,7 @@ def suggest_matchup_swaps(
 
         best: MatchupSwap | None = None
 
-        for replaced_name in member_names:
+        for replaced_name in replaceable_names:
             removed_pressure, removed_balance = contributions[replaced_name]
             pressure = base_pressure - removed_pressure + candidate_pressure
             balance = base_balance - removed_balance + candidate_balance
