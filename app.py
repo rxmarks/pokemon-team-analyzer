@@ -834,12 +834,26 @@ table = team_table(team, chart)
 member_cols = list(team)
 gaps = coverage_gaps(team, chart)
 
-try:
-    with st.spinner("Fetching base stats..."):
-        team_stats = {name: cached_stats(name) for name in team}
-except requests.RequestException:
-    st.error("Couldn't load base stats from PokeAPI. Try again in a moment.")
-    st.stop()
+team_stats: dict[str, dict[str, int]] = {}
+missing_stats: list[str] = []
+
+with st.spinner("Fetching base stats..."):
+    for name in team:
+        try:
+            team_stats[name] = cached_stats(name)
+        except requests.RequestException:
+            missing_stats.append(name)
+
+team_stats_complete = not missing_stats
+
+if missing_stats:
+    missing_names = ", ".join(display_name(name) for name in missing_stats)
+    st.warning(
+        f"Couldn't load base stats for: {missing_names}. "
+        "Type-based analysis remains available. "
+        "Stat checks and suggested move loadouts require stats "
+        "for every analyzed member."
+    )
 
 if candidate_source == "My available Pokémon":
     replacement_names = [name for name in available_pokemon if name not in names]
@@ -961,7 +975,15 @@ with offense:
 
 with moves:
     render_move_coverage(team, chart)
-    render_loadout_suggestions(team, chart, team_stats)
+
+    if team_stats_complete:
+        render_loadout_suggestions(team, chart, team_stats)
+    else:
+        st.info(
+            "Suggested move loadouts are unavailable until base stats "
+            "can be loaded for every analyzed member. "
+            "Selected-move coverage remains available."
+        )
 
 with opponent_matchups:
     st.subheader("Opponent Matchups")
@@ -1255,14 +1277,28 @@ with threats:
     render_meta_threats(team, chart)
 
 with stats_tab:
-    st.dataframe(pd.DataFrame(team_stats).T, width="stretch")
+    if team_stats:
+        st.dataframe(pd.DataFrame(team_stats).T, width="stretch")
 
-    warnings = stat_warnings(team_stats)
-    if warnings:
-        for warning in warnings:
-            st.warning(warning)
+    if not team_stats_complete:
+        if team_stats:
+            st.warning(
+                f"Partial base-stat table: {len(team_stats)} of "
+                f"{len(team)} analyzed members loaded. "
+                "Team-wide speed and attacker-role checks are unavailable."
+            )
+        else:
+            st.info(
+                "Base stats are unavailable for all analyzed members. "
+                "Team-wide speed and attacker-role checks are unavailable."
+            )
     else:
-        st.success("Team has speed, physical, and special attackers covered.")
+        warnings = stat_warnings(team_stats)
+        if warnings:
+            for warning in warnings:
+                st.warning(warning)
+        else:
+            st.success("Team has speed, physical, and special attackers covered.")
 
     with st.expander("How to read the stat check"):
         st.markdown(
