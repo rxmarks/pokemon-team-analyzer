@@ -1,6 +1,7 @@
 from io import BytesIO
 from pathlib import Path
 
+import pandas as pd
 import pytest
 import requests
 import streamlit as st
@@ -1390,3 +1391,138 @@ def test_workspace_download_contains_current_build_and_preferences(monkeypatch):
     assert not at.exception
     assert downloads
     assert load_workspace(downloads[-1]) == saved_analysis_workspace()
+
+
+def selected_move_tables(at):
+    columns = {"Move", "Type", "Category", "Power", "Coverage"}
+
+    return [element.value for element in at.dataframe if columns.issubset(element.value.columns)]
+
+
+@pytest.mark.parametrize(
+    ("move", "metadata", "category", "coverage", "power"),
+    [
+        (
+            "earthquake",
+            {
+                "type": "ground",
+                "damage_class": "physical",
+                "power": 100,
+            },
+            "Physical",
+            "Counted — damaging move type",
+            100,
+        ),
+        (
+            "swords-dance",
+            {
+                "type": "normal",
+                "damage_class": "status",
+                "power": None,
+            },
+            "Status",
+            "Not counted — status move",
+            None,
+        ),
+        (
+            "unverified-move",
+            None,
+            "Unknown",
+            "Unavailable — selection preserved",
+            None,
+        ),
+        (
+            "seismic-toss",
+            {
+                "type": "fighting",
+                "damage_class": "physical",
+                "power": None,
+            },
+            "Physical",
+            "Counted — damaging move type",
+            None,
+        ),
+    ],
+    ids=["damaging", "status", "unknown", "missing-power"],
+)
+def test_selected_move_details_render(
+    monkeypatch,
+    move,
+    metadata,
+    category,
+    coverage,
+    power,
+):
+    monkeypatch.setattr(
+        move_ui,
+        "cached_learnable_moves",
+        lambda name: [move],
+    )
+    monkeypatch.setattr(
+        move_ui,
+        "cached_move_cache",
+        lambda: {} if metadata is None else {move: metadata},
+    )
+
+    at = run_app_with_team("garchomp")
+    at.multiselect(key="moves_garchomp").set_value([move]).run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == [move]
+
+    tables = selected_move_tables(at)
+    assert len(tables) == 1
+
+    row = tables[0].iloc[0]
+    assert row["Move"] == move.replace("-", " ").title()
+    assert row["Category"] == category
+    assert row["Coverage"] == coverage
+
+    if metadata is None:
+        assert row["Type"] == "Unknown"
+    else:
+        assert row["Type"] == metadata["type"].title()
+
+    if power is None:
+        assert pd.isna(row["Power"])
+    else:
+        assert row["Power"] == power
+
+
+def test_empty_move_selection_does_not_render_details():
+    at = run_app_with_team("garchomp")
+
+    assert not at.exception
+    assert selected_move_tables(at) == []
+    assert any(info.value == "Pick some moves to see move-based coverage gaps." for info in at.info)
+
+
+def test_selected_move_details_remain_after_learnset_failure(monkeypatch):
+    monkeypatch.setattr(
+        move_ui,
+        "cached_move_cache",
+        lambda: {
+            "earthquake": {
+                "type": "ground",
+                "damage_class": "physical",
+                "power": 100,
+            }
+        },
+    )
+
+    at = run_app_with_team("garchomp")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+
+    def unavailable(name):
+        raise requests.ConnectionError("offline")
+
+    monkeypatch.setattr(move_ui, "cached_learnable_moves", unavailable)
+    at.run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+
+    tables = selected_move_tables(at)
+    assert len(tables) == 1
+    assert tables[0]["Move"].tolist() == ["Earthquake"]
+    assert any("Existing selections are preserved" in warning.value for warning in at.warning)

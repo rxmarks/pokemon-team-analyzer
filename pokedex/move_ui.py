@@ -7,6 +7,7 @@ import streamlit as st
 from pokedex.analysis import move_coverage_gaps
 from pokedex.config import CACHE_TTL_SECONDS, MAX_MOVES
 from pokedex.fetch import get_learnable_moves, load_move_cache
+from pokedex.move_details import selected_move_details
 from pokedex.team_session import reconcile_team
 from pokedex.types import MoveCache, Team, TypeChart
 
@@ -36,6 +37,12 @@ def render_move_coverage(team: Team, type_chart: TypeChart) -> None:
     st.caption(
         "Pick up to 4 moves per Pokémon. Status moves are preserved but do not "
         "contribute to offensive coverage. Learnsets are not format-legality checks."
+    )
+    st.caption(
+        "Selected-move details show cached metadata. Base power is not "
+        "calculated battle damage. A missing power value does not necessarily "
+        "mean coverage data is unavailable. Coverage status describes this "
+        "app's type calculation, not move legality or a guaranteed matchup."
     )
 
     move_cache = cached_move_cache()
@@ -73,6 +80,35 @@ def render_move_coverage(team: Team, type_chart: TypeChart) -> None:
             key=key,
             on_change=moves_changed,
         )
+
+        if team_moves[name]:
+            st.caption(f"Selected moves for {pretty(name)}")
+
+            st.dataframe(
+                selected_move_details(team_moves[name], move_cache),
+                width="stretch",
+                hide_index=True,
+                column_config={
+                    "Move": st.column_config.TextColumn("Move"),
+                    "Type": st.column_config.TextColumn("Type"),
+                    "Category": st.column_config.TextColumn("Category"),
+                    "Power": st.column_config.NumberColumn(
+                        "Base power",
+                        format="%d",
+                        help=(
+                            "Cached base power, not calculated damage. "
+                            "A blank value means no numeric power is available."
+                        ),
+                    ),
+                    "Coverage": st.column_config.TextColumn(
+                        "Coverage status",
+                        help=(
+                            "Whether this move contributes a damaging attack "
+                            "type to the app's coverage calculation."
+                        ),
+                    ),
+                },
+            )
 
     unknown_moves = sorted(
         {move for moves in team_moves.values() for move in moves if move not in move_cache}
