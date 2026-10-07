@@ -7,6 +7,7 @@ from pokedex.analysis import (
     matchup_table,
     opponent_threat_report,
     stat_warnings,
+    suggest_matchup_swaps,
     suggest_swaps,
     team_badness,
     team_table,
@@ -31,6 +32,7 @@ from pokedex.loadout_ui import render_loadout_suggestions
 from pokedex.move_ui import cached_learnable_moves, cached_move_cache, render_move_coverage
 from pokedex.showdown import parse_showdown
 from pokedex.threat_ui import cached_pokemon, render_meta_threats
+from pokedex.types import Team, TypeChart
 
 st.set_page_config(page_title="Pokémon Team Analyzer", page_icon="🔴", layout="wide")
 
@@ -44,6 +46,25 @@ SWAP_BUTTONS = 5
 @st.cache_data
 def cached_chart() -> dict:
     return load_type_chart()
+
+
+@st.cache_data(
+    ttl=CACHE_TTL_SECONDS,
+    max_entries=64,
+    show_spinner=False,
+)
+def cached_matchup_swaps(
+    team: Team,
+    candidates: Team,
+    opponent_team: Team,
+    chart: TypeChart,
+) -> pd.DataFrame:
+    return suggest_matchup_swaps(
+        team,
+        candidates,
+        opponent_team,
+        chart,
+    )
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
@@ -395,7 +416,84 @@ with opponent_matchups:
 
             st.markdown("#### Matchup grid")
             st.dataframe(matchups, width="stretch")
+            st.markdown("#### Matchup-specific swap suggestions")
+            st.caption(
+                "Ranked for the selected opponent team: lower threat pressure first, "
+                "then higher matchup balance. Overall team health breaks ties. "
+                "These are type-only rankings, not battle predictions."
+            )
 
+            with st.spinner("Ranking matchup-specific swaps..."):
+                matchup_swaps = cached_matchup_swaps(
+                    team,
+                    candidates,
+                    opponent_team,
+                    chart,
+                )
+
+            if matchup_swaps.empty:
+                st.info("No eligible single swaps are available.")
+            else:
+                shown_matchup_swaps = matchup_swaps.copy()
+                shown_matchup_swaps.insert(
+                    0,
+                    "sprite",
+                    [cached_sprite(name) for name in shown_matchup_swaps[SWAP_IN]],
+                )
+
+                st.dataframe(
+                    shown_matchup_swaps,
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "sprite": st.column_config.ImageColumn("", width="small"),
+                        SWAP_IN: st.column_config.TextColumn("Swap in"),
+                        SWAP_OUT: st.column_config.TextColumn("Swap out"),
+                        "threat_pressure": st.column_config.NumberColumn(
+                            "Threat pressure",
+                            help="Threatened members minus offensive answers. Lower is better.",
+                        ),
+                        "matchup_balance": st.column_config.NumberColumn(
+                            "Matchup balance",
+                            help="Total native-type pressure across both teams. Higher is better.",
+                        ),
+                        "pressure_improvement": st.column_config.NumberColumn(
+                            "Pressure improvement",
+                            help=(
+                                "Current pressure minus pressure after the swap. "
+                                "Positive is better."
+                            ),
+                        ),
+                        "new_badness": st.column_config.NumberColumn(
+                            "New badness",
+                            help="Overall team score after the swap. Lower is better.",
+                        ),
+                        "weak_total": st.column_config.NumberColumn(
+                            "Weakness total",
+                            help="Number of weak attack-type/member pairs after the swap.",
+                        ),
+                    },
+                )
+
+                st.caption(
+                    "The table ranks eligible replacements; it does not guarantee "
+                    "that every listed swap improves on your current team. "
+                    "A positive pressure improvement means fewer net threats."
+                )
+
+                st.markdown("**Try a matchup swap**")
+                for index, row in enumerate(
+                    matchup_swaps.head(SWAP_BUTTONS).itertuples(index=False)
+                ):
+                    out_name = row.replaces
+                    in_name = row.candidate
+
+                    st.button(
+                        f"{display_name(out_name)} → {display_name(in_name)}",
+                        key=f"matchup_swap_{index}",
+                        on_click=apply_swap,
+                        args=(out_name, in_name),
+                    )
             st.markdown("#### Opponent threat report")
             st.dataframe(
                 threat_rows,
