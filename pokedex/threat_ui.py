@@ -4,6 +4,7 @@ import streamlit as st
 from pokedex.analysis import threat_report
 from pokedex.fetch import load_pokemon_cache, load_smogon_usage
 from pokedex.types import PokemonCache, Team, TypeChart, UsageData
+from pokedex.usage_context import usage_context
 
 
 @st.cache_data
@@ -22,16 +23,42 @@ def render_meta_threats(team: Team, type_chart: TypeChart) -> None:
     cache = cached_pokemon()
     entries = usage["top"]
 
+    context = usage_context(
+        usage.get("format"),
+        usage.get("month"),
+    )
+
     st.subheader("Meta threats")
     st.caption(
-        f"Top {len(entries)} Pokémon in {usage['format']} ({usage['month']}), "
-        "from Smogon usage stats."
+        f"Saved usage dataset: {context.dataset_id or 'Unavailable'} · "
+        f"Usage month: {context.month or 'Unavailable'} · "
+        f"{len(entries)} listed entries"
     )
+
+    baseline = (
+        str(context.weighting_baseline) if context.weighting_baseline is not None else "Unavailable"
+    )
+    st.caption(
+        f"Weighting baseline: {baseline}. "
+        "When present, this identifies the rating baseline used for "
+        "usage weighting—not a strict minimum player rating."
+    )
+
+    if context.source_url is not None:
+        st.markdown(f"[Smogon usage source file]({context.source_url})")
+    else:
+        st.caption("Source-file link unavailable: valid dataset and month metadata are required.")
+
     st.caption(
         "This usage list describes one battle format, not every game or server. "
         "Results use native-type matchups, not a battle simulation."
     )
-
+    st.caption(
+        "Usage % describes popularity in the saved usage dataset. "
+        "Weighted datasets account for player ratings. "
+        "Danger flags come from this app's type-based heuristic, "
+        "not from usage percentage."
+    )
     if not entries:
         st.info("No Pokémon are listed in the saved usage data.")
         return
@@ -42,6 +69,11 @@ def render_meta_threats(team: Team, type_chart: TypeChart) -> None:
 
     matched_count = sum(row["name"] in cache for row in entries)
     missing_count = len(entries) - matched_count
+
+    st.caption(
+        f"Analysis coverage: {matched_count} of {len(entries)} "
+        "listed entries matched the local Pokémon cache."
+    )
 
     if not threats:
         st.info(
