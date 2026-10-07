@@ -2306,7 +2306,8 @@ def test_swap_confirmation_rechecks_types_before_changing_build(monkeypatch):
 
     team_before = list(at.multiselect(key="team").value)
     locks_before = list(at.multiselect(key="locked_members").value)
-    url_before = list(at.query_params["team"])
+    raw_url_before = at.query_params["team"]
+    url_before = raw_url_before if isinstance(raw_url_before, str) else ",".join(raw_url_before)
     with pytest.raises(KeyError):
         at.session_state["team_before_swap"]
 
@@ -2322,7 +2323,9 @@ def test_swap_confirmation_rechecks_types_before_changing_build(monkeypatch):
     assert at.multiselect(key="team").value == team_before
     assert at.multiselect(key="locked_members").value == locks_before
     assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
-    assert at.query_params["team"] == url_before
+    raw_url_after = at.query_params["team"]
+    url_after = raw_url_after if isinstance(raw_url_after, str) else ",".join(raw_url_after)
+    assert url_after == url_before
 
     with pytest.raises(KeyError):
         at.session_state["team_before_swap"]
