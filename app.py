@@ -30,6 +30,7 @@ from pokedex.fetch import (
 from pokedex.loadout_ui import render_loadout_suggestions
 from pokedex.move_ui import render_move_coverage
 from pokedex.showdown import parse_showdown
+from pokedex.team_files import dump_team, load_team
 from pokedex.team_session import reconcile_team, restore_team, snapshot_team
 from pokedex.team_state import TeamMember, TeamState
 from pokedex.threat_ui import cached_pokemon, render_meta_threats
@@ -157,6 +158,30 @@ def locks_changed() -> None:
     """Refresh the snapshot and dismiss a preview when locks change."""
     st.session_state.pop("pending_swap", None)
     reconcile_team(st.session_state)
+
+
+def import_team_json(contents: bytes | None) -> None:
+    """Validate a saved team before replacing any supported build state."""
+    if contents is None:
+        st.session_state["team_file_error"] = "Choose a JSON team file first."
+        st.session_state.pop("team_file_success", None)
+        return
+
+    try:
+        imported = load_team(contents, valid_species=set(all_names))
+    except ValueError as exc:
+        st.session_state["team_file_error"] = str(exc)
+        st.session_state.pop("team_file_success", None)
+        return
+
+    restore_team(st.session_state, imported)
+    clear_swap_history()
+
+    for key in ("import_ok", "import_skipped", "import_notes"):
+        st.session_state.pop(key, None)
+
+    st.session_state.pop("team_file_error", None)
+    st.session_state["team_file_success"] = "Saved team loaded."
 
 
 def import_showdown() -> None:
@@ -346,6 +371,46 @@ with st.expander("Import from Pokémon Showdown"):
                 "Imported species and moves only. Items, abilities, EVs, IVs, "
                 "and other build details are not imported yet."
             )
+
+with st.expander("Save or load team JSON"):
+    st.caption(
+        "Saves your main team's species, order, selected moves, and locks. "
+        "Does not save opponents, items, abilities, EVs, IVs, or format settings. "
+        "Move selections are preserved, not checked for battle legality."
+    )
+
+    st.download_button(
+        "Download team JSON",
+        data=dump_team(snapshot_team(st.session_state)),
+        file_name="pokemon-team.json",
+        mime="application/json",
+        key="download_team_json",
+        on_click="ignore",
+    )
+
+    uploaded_team = st.file_uploader(
+        "Choose a saved JSON team",
+        type=["json"],
+        key="team_json_upload",
+        help="Selecting a file does not replace your team. Click Load team to apply it.",
+    )
+
+    uploaded_contents = uploaded_team.getvalue() if uploaded_team is not None else None
+
+    st.button(
+        "Load team",
+        key="load_team_json",
+        on_click=import_team_json,
+        args=(uploaded_contents,),
+        disabled=uploaded_contents is None,
+        help="Replace your main team after the entire file passes validation.",
+    )
+
+    if error := st.session_state.get("team_file_error"):
+        st.error(error)
+
+    if success := st.session_state.get("team_file_success"):
+        st.success(success)
 
 if names:
     st.query_params["team"] = ",".join(names)
