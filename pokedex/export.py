@@ -1,6 +1,7 @@
 """Export helpers for sharing supported Pokémon team builds."""
 
 from pokedex.display import display_name
+from pokedex.pokemon_names import showdown_species_name
 from pokedex.team_state import TeamState
 from pokedex.types import Team
 
@@ -28,7 +29,7 @@ def showdown_export(
         entries = [(name, tuple(supplied_moves.get(name, []))) for name in team]
 
     for species, moves in entries:
-        lines = [display_name(species)]
+        lines = [showdown_species_name(species)]
         lines.extend(f"- {display_name(move)}" for move in moves)
         blocks.append("\n".join(lines))
 

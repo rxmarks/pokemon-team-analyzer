@@ -86,3 +86,29 @@ def test_explicit_member_limit():
 def test_rejects_negative_member_limit():
     with pytest.raises(ValueError, match="nonnegative"):
         parse_showdown("Garchomp", max_members=-1)
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [
+        ("Nidoran♀", "nidoran-f"),
+        ("Nidoran♂", "nidoran-m"),
+        ("Mimey (Mr. Mime) (M) @ Leftovers", "mr-mime"),
+        ("RotomWash @ Leftovers", "rotom-wash"),
+        ("TypeNull", "type-null"),
+        ("Farfetch’d", "farfetchd"),
+    ],
+)
+def test_species_aliases_are_resolved_in_headers(header, expected):
+    parsed = parse_showdown(header + "\n- Swords Dance")
+
+    assert len(parsed) == 1
+    assert parsed[0].species == expected
+    assert parsed[0].moves == ["swords-dance"]
+
+
+def test_species_translation_does_not_change_move_normalization():
+    parsed = parse_showdown("Nidoran♀\n- Hidden Power [Fire]\n- Will-O-Wisp\n")
+
+    assert parsed[0].species == "nidoran-f"
+    assert parsed[0].moves == ["hidden-power", "will-o-wisp"]
