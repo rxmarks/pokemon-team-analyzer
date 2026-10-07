@@ -1,4 +1,7 @@
+import pytest
 from streamlit.testing.v1 import AppTest
+
+pytestmark = pytest.mark.app
 
 
 def test_summary_labels_partial_analysis():
