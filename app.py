@@ -396,6 +396,49 @@ if "locked_members" not in st.session_state:
 
 reconcile_team(st.session_state)
 
+st.subheader("Build your team")
+st.caption(
+    "Choose your Pokémon below, or import a team from Showdown or a saved file. "
+    "Open Replacement options to limit which Pokémon can be suggested."
+)
+
+names = st.multiselect(
+    "Pick up to 6 Pokémon (type to search)",
+    options=all_names,
+    max_selections=MAX_TEAM_SIZE,
+    key="team",
+    format_func=display_name,
+    on_change=clear_swap_history,
+)
+
+st.multiselect(
+    "Keep these Pokémon on the team",
+    options=names,
+    key="locked_members",
+    format_func=display_name,
+    on_change=locks_changed,
+    help=(
+        "Locked Pokémon still contribute to analysis, but neither swap engine "
+        "can recommend replacing them."
+    ),
+)
+
+selected_lock_count = len(st.session_state.get("locked_members", []))
+
+st.caption(
+    f"Team: {len(names)}/{MAX_TEAM_SIZE} Pokémon selected · "
+    f"{selected_lock_count} locked against replacement"
+)
+
+if "team_before_swap" in st.session_state:
+    out_name, in_name = st.session_state["last_swap"]
+    st.caption(f"Last swap: {display_name(out_name)} → {display_name(in_name)}")
+    st.button(
+        "Undo last swap",
+        key="undo_swap",
+        on_click=undo_swap,
+        help="Restore your team before the most recent swap.",
+    )
 with st.expander("Replacement options"):
     candidate_source = st.radio(
         "Which Pokémon can be suggested as replacements?",
@@ -430,9 +473,11 @@ with st.expander("Replacement options"):
         )
 
     st.caption(
-        "Replacement settings are session preferences and are not included in downloaded team JSON."
+        "This pool limits suggested replacements; it does not change your current team. "
+        "Save a workspace to keep the pool and replacement settings. "
+        "Team JSON saves only your team build."
     )
-    st.markdown("#### Bulk pool entry")
+    st.markdown("#### Paste a replacement list")
 
     st.radio(
         "Input format",
@@ -445,7 +490,7 @@ with st.expander("Replacement options"):
     st.text_area(
         "Paste Pokémon names or a Showdown roster",
         key="pool_paste",
-        height=180,
+        height=120,
         on_change=pool_import_input_changed,
         help=(
             "Names mode accepts comma-separated names or one name per line. "
@@ -511,37 +556,12 @@ with st.expander("Replacement options"):
     if message := st.session_state.get("pool_import_message"):
         st.success(message)
 
-
-names = st.multiselect(
-    "Pick up to 6 Pokémon (type to search)",
-    options=all_names,
-    max_selections=MAX_TEAM_SIZE,
-    key="team",
-    format_func=display_name,
-    on_change=clear_swap_history,
+st.markdown("### Import, export, and saved files")
+st.caption(
+    "Showdown text: species and moves · "
+    "Team JSON: supported team build and locks · "
+    "Workspace JSON: team, replacement pool, opponents, and settings"
 )
-
-st.multiselect(
-    "Keep these Pokémon on the team",
-    options=names,
-    key="locked_members",
-    format_func=display_name,
-    on_change=locks_changed,
-    help=(
-        "Locked Pokémon still contribute to analysis, but neither swap engine "
-        "can recommend replacing them."
-    ),
-)
-
-if "team_before_swap" in st.session_state:
-    out_name, in_name = st.session_state["last_swap"]
-    st.caption(f"Last swap: {display_name(out_name)} → {display_name(in_name)}")
-    st.button(
-        "Undo last swap",
-        key="undo_swap",
-        on_click=undo_swap,
-        help="Restore your team before the most recent swap.",
-    )
 
 with st.expander("Import from Pokémon Showdown"):
     st.text_area(
@@ -690,7 +710,10 @@ st.caption(
 
 if names:
     st.query_params["team"] = ",".join(names)
-    st.caption("The page URL now links to this team. Copy it to share.")
+    st.caption(
+        "Copy the page URL to share species only. "
+        "Use a downloaded file to share selected moves or saved settings."
+    )
 else:
     st.query_params.pop("team", None)
 

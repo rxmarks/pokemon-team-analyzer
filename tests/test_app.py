@@ -2035,6 +2035,38 @@ def test_naming_showdown_download_uses_mapped_species_names(
     assert [mon.species for mon in parse_showdown(contents)] == species
 
 
+def test_team_controls_show_heading_and_selected_counts():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+
+    assert not at.exception
+    assert at.subheader[0].value == "Build your team"
+    assert any(
+        caption.value == "Team: 2/6 Pokémon selected · 1 locked against replacement"
+        for caption in at.caption
+    )
+    assert any(
+        "Workspace JSON: team, replacement pool, opponents, and settings" in caption.value
+        for caption in at.caption
+    )
+
+
+def test_empty_team_keeps_setup_and_file_controls_available():
+    at = run_app_with_team("garchomp")
+    at.multiselect(key="team").set_value([]).run()
+
+    assert not at.exception
+    assert any(
+        caption.value == "Team: 0/6 Pokémon selected · 0 locked against replacement"
+        for caption in at.caption
+    )
+    assert at.multiselect(key="available_pokemon").value == []
+    assert at.button(key="import_btn")
+    assert at.button(key="load_team_json")
+    assert at.button(key="load_workspace_json")
+    assert any(info.value == "Pick at least one Pokémon to start." for info in at.info)
+
+
 def test_team_summary_shows_existing_analysis_findings():
     at = run_app_with_team("garchomp,tyranitar")
 
