@@ -492,3 +492,99 @@ def test_manual_team_edit_clears_preview():
     assert not at.exception
     assert at.multiselect(key="team").value == ["dragonite"]
     assert not any(button.key == "confirm_swap_preview" for button in at.button)
+
+
+def test_showdown_import_preserves_selected_moves():
+    at = run_app()
+
+    at.text_area(key="showdown_paste").input(PASTE)
+    at.button(key="import_btn").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.multiselect(key="moves_tyranitar").value == ["crunch"]
+    assert any("Crunch" in warning.value and "preserved" in warning.value for warning in at.warning)
+
+
+def test_status_moves_can_be_selected(monkeypatch):
+    monkeypatch.setattr(
+        move_ui,
+        "cached_learnable_moves",
+        lambda name: ["earthquake", "swords-dance"],
+    )
+    monkeypatch.setattr(
+        move_ui,
+        "cached_move_cache",
+        lambda: {
+            "earthquake": {"type": "ground", "damage_class": "physical"},
+            "swords-dance": {"type": "normal", "damage_class": "status"},
+        },
+    )
+
+    at = run_app_with_team("garchomp")
+    at.multiselect(key="moves_garchomp").set_value(["swords-dance"]).run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == ["swords-dance"]
+    info_messages = [info.value for info in at.info]
+    warning_messages = [warning.value for warning in at.warning]
+
+    assert any("No known damaging moves are selected" in message for message in info_messages), {
+        "info": info_messages,
+        "warnings": warning_messages,
+    }
+
+
+def test_move_lookup_failure_preserves_selection(monkeypatch):
+    at = run_app_with_team("garchomp")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+
+    def unavailable(name):
+        raise requests.ConnectionError("offline")
+
+    monkeypatch.setattr(move_ui, "cached_learnable_moves", unavailable)
+    at.run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert any("Existing selections are preserved" in warning.value for warning in at.warning)
+
+
+def test_removed_member_moves_do_not_return_when_readded():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+
+    at.multiselect(key="team").set_value(["tyranitar"]).run()
+    assert not at.exception
+
+    at.multiselect(key="team").set_value(["tyranitar", "garchomp"]).run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == []
+
+
+def test_swap_and_undo_preserve_supported_build_state():
+    at = run_app_with_team("garchomp,tyranitar")
+
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
+    at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+
+    at = apply_first_matchup_swap(at)
+    assert not at.exception
+
+    current_team = at.multiselect(key="team").value
+    incoming = next(name for name in current_team if name not in {"garchomp", "tyranitar"})
+
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.multiselect(key=f"moves_{incoming}").value == []
+    assert at.multiselect(key="locked_members").value == ["garchomp"]
+
+    at.button(key="undo_swap").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    assert at.multiselect(key="locked_members").value == ["garchomp"]
+    assert at.multiselect(key="opponent_team").value == ["ferrothorn"]

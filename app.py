@@ -30,6 +30,8 @@ from pokedex.fetch import (
 from pokedex.loadout_ui import render_loadout_suggestions
 from pokedex.move_ui import render_move_coverage
 from pokedex.showdown import parse_showdown
+from pokedex.team_session import reconcile_team, restore_team, snapshot_team
+from pokedex.team_state import TeamMember, TeamState
 from pokedex.threat_ui import cached_pokemon, render_meta_threats
 from pokedex.types import Team, TypeChart
 
@@ -144,46 +146,86 @@ def team_from_url(valid: list[str]) -> list[str]:
 
 
 def clear_swap_history() -> None:
-    """Invalidate swap state and remove locks for members no longer on the team."""
+    """Invalidate undo and preview after a direct team edit or import."""
     st.session_state.pop("team_before_swap", None)
     st.session_state.pop("last_swap", None)
     st.session_state.pop("pending_swap", None)
-
-    current_team = set(st.session_state.get("team", []))
-    st.session_state["locked_members"] = [
-        name for name in st.session_state.get("locked_members", []) if name in current_team
-    ]
+    reconcile_team(st.session_state)
 
 
 def locks_changed() -> None:
-    """Dismiss an existing preview when replacement restrictions change."""
+    """Refresh the snapshot and dismiss a preview when locks change."""
     st.session_state.pop("pending_swap", None)
+    reconcile_team(st.session_state)
 
 
 def import_showdown() -> None:
+    """Import supported species and moves without losing retained locks."""
     mons = parse_showdown(st.session_state.get("showdown_paste", ""))
     valid = set(all_names)
-    found = list(dict.fromkeys(mon.species for mon in mons if mon.species in valid))
+    previous_locks = set(st.session_state.get("locked_members", []))
 
     st.session_state["import_skipped"] = [mon.species for mon in mons if mon.species not in valid]
-    st.session_state["import_ok"] = bool(found)
+    st.session_state["import_notes"] = []
 
-    if found:
-        st.session_state["team"] = found[:MAX_TEAM_SIZE]
+    members: list[TeamMember] = []
+    seen_species: set[str] = set()
+
+    for mon in mons:
+        if mon.species not in valid:
+            continue
+
+        if mon.species in seen_species:
+            st.session_state["import_notes"].append(
+                f"Skipped duplicate species: {display_name(mon.species)}."
+            )
+            continue
+
+        seen_species.add(mon.species)
+        moves = tuple(dict.fromkeys(mon.moves))
+
+        if len(moves) != len(mon.moves):
+            st.session_state["import_notes"].append(
+                f"Removed duplicate move entries for {display_name(mon.species)}."
+            )
+
+        members.append(
+            TeamMember(
+                species=mon.species,
+                moves=moves,
+                locked=mon.species in previous_locks,
+            )
+        )
+
+    st.session_state["import_ok"] = bool(members)
+
+    if members:
+        imported = TeamState(members=tuple(members))
+        restore_team(st.session_state, imported)
         clear_swap_history()
 
 
 def apply_swap(out_name: str, in_name: str) -> None:
-    """Apply a valid unlocked replacement and preserve one-step undo."""
-    current_team = list(st.session_state["team"])
-    locks = set(st.session_state.get("locked_members", []))
+    """Apply a valid replacement and preserve the complete previous build."""
+    current = snapshot_team(st.session_state)
 
-    if out_name not in current_team or in_name in current_team or out_name in locks:
+    if (
+        out_name not in current.species
+        or in_name in current.species
+        or out_name in current.locked_members
+    ):
         return
 
-    st.session_state["team_before_swap"] = current_team
+    proposed = TeamState(
+        members=tuple(
+            TeamMember(species=in_name) if member.species == out_name else member
+            for member in current.members
+        )
+    )
+
+    st.session_state["team_before_swap"] = current
     st.session_state["last_swap"] = (out_name, in_name)
-    st.session_state["team"] = [in_name if name == out_name else name for name in current_team]
+    restore_team(st.session_state, proposed)
 
 
 def stage_swap(out_name: str, in_name: str) -> None:
@@ -211,16 +253,12 @@ def confirm_swap_preview() -> None:
 
 
 def undo_swap() -> None:
-    """Restore the previous team and retain only locks valid for that team."""
+    """Restore species, moves, and locks from before the last swap."""
     st.session_state.pop("pending_swap", None)
-    previous_team = st.session_state.pop("team_before_swap", None)
+    previous = st.session_state.pop("team_before_swap", None)
 
-    if previous_team is not None:
-        restored_team = list(previous_team)
-        st.session_state["team"] = restored_team
-        st.session_state["locked_members"] = [
-            name for name in st.session_state.get("locked_members", []) if name in restored_team
-        ]
+    if previous is not None:
+        restore_team(st.session_state, previous)
 
     st.session_state.pop("last_swap", None)
 
@@ -249,10 +287,7 @@ if "opponent_team" not in st.session_state:
 if "locked_members" not in st.session_state:
     st.session_state["locked_members"] = []
 
-# Reconcile before constructing the lock widget, never after it is instantiated.
-st.session_state["locked_members"] = [
-    name for name in st.session_state["locked_members"] if name in st.session_state["team"]
-]
+reconcile_team(st.session_state)
 
 names = st.multiselect(
     "Pick up to 6 Pokémon (type to search)",
@@ -302,6 +337,15 @@ with st.expander("Import from Pokémon Showdown"):
         skipped = st.session_state.get("import_skipped")
         if skipped:
             st.warning("Skipped (not found in PokeAPI): " + ", ".join(skipped))
+
+        for note in st.session_state.get("import_notes", []):
+            st.warning(note)
+
+        if st.session_state["import_ok"]:
+            st.caption(
+                "Imported species and moves only. Items, abilities, EVs, IVs, "
+                "and other build details are not imported yet."
+            )
 
 if names:
     st.query_params["team"] = ",".join(names)
