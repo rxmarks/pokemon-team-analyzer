@@ -2065,3 +2065,48 @@ def test_empty_team_keeps_setup_and_file_controls_available():
     assert at.button(key="load_team_json")
     assert at.button(key="load_workspace_json")
     assert any(info.value == "Pick at least one Pokémon to start." for info in at.info)
+
+
+def test_team_summary_shows_existing_analysis_findings():
+    at = run_app_with_team("garchomp,tyranitar")
+
+    assert not at.exception
+
+    markdown_values = [element.value for element in at.markdown]
+
+    assert "### What to review" in markdown_values
+    assert any(
+        value.startswith("- Shared weaknesses:")
+        and "Fairy (2 members: Garchomp, Tyranitar)" in value
+        for value in markdown_values
+    )
+    assert any(
+        value.startswith("- 4× weaknesses:")
+        and "Garchomp to Ice" in value
+        and "Tyranitar to Fighting" in value
+        for value in markdown_values
+    )
+    assert any(value.startswith("- Native-type coverage gaps:") for value in markdown_values)
+    assert any(
+        "not a battle simulation or an overall team rating" in caption.value
+        for caption in at.caption
+    )
+
+
+def test_team_summary_updates_after_direct_team_edit():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="team").set_value(["garchomp"]).run()
+
+    assert not at.exception
+
+    markdown_values = [element.value for element in at.markdown]
+
+    assert (
+        "- Shared weaknesses: no attack type hits two or more analyzed members super-effectively."
+    ) in markdown_values
+    assert any(
+        value.startswith("- 4× weaknesses:")
+        and "Garchomp to Ice" in value
+        and "Tyranitar" not in value
+        for value in markdown_values
+    )

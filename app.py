@@ -34,6 +34,8 @@ from pokedex.showdown import parse_showdown
 from pokedex.team_files import dump_team, load_team
 from pokedex.team_session import reconcile_team, restore_team, snapshot_team
 from pokedex.team_state import TeamMember, TeamState
+from pokedex.team_summary import summarize_team
+from pokedex.team_summary_ui import render_team_summary
 from pokedex.threat_ui import cached_pokemon, render_meta_threats
 from pokedex.types import Team, TypeChart
 from pokedex.workspace_files import dump_workspace, load_workspace
@@ -903,6 +905,14 @@ m5.metric(
     "Best swap",
     best_swap,
     help="Badness drop from the top-ranked eligible single swap.",
+)
+
+summary = summarize_team(team, table, gaps)
+
+render_team_summary(
+    summary,
+    selected_count=len(names),
+    analyzed_count=len(team),
 )
 
 defense, offense, moves, opponent_matchups, threats, stats_tab, swaps_tab = st.tabs(
