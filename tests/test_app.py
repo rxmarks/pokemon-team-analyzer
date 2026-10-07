@@ -2504,3 +2504,25 @@ def test_overall_swap_applies_despite_opponent_type_failure(monkeypatch):
     for key in ("pending_swap", "pending_swap_opponents"):
         with pytest.raises(KeyError):
             at.session_state[key]
+
+
+def test_swap_preview_renders_type_explanation():
+    at = run_app_with_team("garchomp,tyranitar")
+
+    assert not at.exception
+
+    buttons = [button for button in at.button if button.key and button.key.startswith("swap_")]
+    assert buttons, "Expected a swap alternative for the fixture team"
+
+    team_before = list(at.multiselect(key="team").value)
+    buttons[0].click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == team_before
+    assert "#### What changes" in [element.value for element in at.markdown]
+    assert any(
+        "Native-type coverage is not selected-move coverage." in caption.value
+        for caption in at.caption
+    )
+    assert at.button(key="confirm_swap_preview")
+    assert at.button(key="cancel_swap_preview")
