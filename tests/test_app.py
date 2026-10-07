@@ -1,3 +1,4 @@
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,8 @@ from streamlit.testing.v1 import AppTest
 import pokedex.fetch as fetch
 import pokedex.move_ui as move_ui
 from pokedex import threat_ui
+from pokedex.team_files import dump_team, load_team
+from pokedex.team_state import TeamMember, TeamState
 
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 
@@ -588,3 +591,174 @@ def test_swap_and_undo_preserve_supported_build_state():
     assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
     assert at.multiselect(key="locked_members").value == ["garchomp"]
     assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
+
+
+def mock_team_upload(monkeypatch, contents: str | bytes):
+    """Provide uploaded bytes while keeping the real load button and callback."""
+    raw = contents.encode("utf-8") if isinstance(contents, str) else contents
+
+    monkeypatch.setattr(
+        st,
+        "file_uploader",
+        lambda *args, **kwargs: BytesIO(raw),
+    )
+
+
+def saved_build():
+    return TeamState(
+        members=(
+            TeamMember(
+                "garchomp",
+                moves=("earthquake",),
+                locked=True,
+            ),
+            TeamMember(
+                "tyranitar",
+                moves=("ice-beam",),
+            ),
+        )
+    )
+
+
+def test_json_load_restores_build_order_url_and_preserves_opponents(monkeypatch):
+    mock_team_upload(monkeypatch, dump_team(saved_build()))
+    at = run_app_with_team("dragonite")
+
+    at.multiselect(key="moves_dragonite").set_value(["ice-beam"]).run()
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+
+    at.button(key="load_team_json").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    assert at.multiselect(key="locked_members").value == ["garchomp"]
+    assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
+
+    url_team = at.query_params["team"]
+    assert url_team in ("garchomp,tyranitar", ["garchomp,tyranitar"])
+
+    at.multiselect(key="team").set_value(["garchomp", "tyranitar", "dragonite"]).run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_dragonite").value == []
+
+
+@pytest.mark.parametrize(
+    ("contents", "message"),
+    [
+        ("{", "valid JSON"),
+        ('{"schema_version": 2, "team": []}', "schema version"),
+        (
+            '{"schema_version": 1, "team": ['
+            '{"species": "missingno", "moves": [], "locked": false}]}',
+            "unrecognized species",
+        ),
+    ],
+    ids=["invalid-json", "unsupported-version", "unknown-species"],
+)
+def test_failed_json_load_preserves_build_url_undo_and_preview(
+    monkeypatch,
+    contents,
+    message,
+):
+    mock_team_upload(monkeypatch, contents)
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+
+    at = apply_first_matchup_swap(at)
+    at.button(key="matchup_swap_0").click().run()
+    assert not at.exception
+
+    before_team = list(at.multiselect(key="team").value)
+    before_url = at.query_params["team"]
+    before_snapshot = at.session_state["team_state"]
+    before_undo = at.session_state["team_before_swap"]
+    before_last_swap = at.session_state["last_swap"]
+    before_preview = at.session_state["pending_swap"]
+
+    at.button(key="load_team_json").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == before_team
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.multiselect(key="locked_members").value == ["garchomp"]
+    assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
+    assert at.query_params["team"] == before_url
+    assert at.session_state["team_state"] == before_snapshot
+    assert at.session_state["team_before_swap"] == before_undo
+    assert at.session_state["last_swap"] == before_last_swap
+    assert at.session_state["pending_swap"] == before_preview
+    assert any(message in error.value for error in at.error)
+    assert any(button.key == "undo_swap" for button in at.button)
+    assert any(button.key == "confirm_swap_preview" for button in at.button)
+
+
+def test_successful_json_load_clears_undo_and_preview(monkeypatch):
+    mock_team_upload(monkeypatch, dump_team(saved_build()))
+    at = run_app_with_team("garchomp,tyranitar")
+    at = apply_first_matchup_swap(at)
+
+    at.button(key="matchup_swap_0").click().run()
+    assert not at.exception
+    assert any(button.key == "undo_swap" for button in at.button)
+    assert any(button.key == "confirm_swap_preview" for button in at.button)
+
+    at.button(key="load_team_json").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+    assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
+    assert not any(button.key == "undo_swap" for button in at.button)
+    assert not any(button.key == "confirm_swap_preview" for button in at.button)
+    assert any(success.value == "Saved team loaded." for success in at.success)
+
+
+def test_json_load_accepts_empty_team_and_removes_url(monkeypatch):
+    mock_team_upload(monkeypatch, dump_team(TeamState()))
+    at = run_app_with_team("garchomp")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+
+    at.button(key="load_team_json").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == []
+    assert at.multiselect(key="locked_members").value == []
+    assert "team" not in at.query_params
+    assert any(info.value == "Pick at least one Pokémon to start." for info in at.info)
+
+    at.multiselect(key="team").set_value(["garchomp"]).run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == []
+
+
+def test_json_load_button_disabled_without_file():
+    at = run_app()
+
+    assert not at.exception
+    assert at.button(key="load_team_json").disabled
+
+
+def test_json_download_contains_current_supported_build(monkeypatch):
+    downloads = []
+    original_download_button = st.download_button
+
+    def capture_download(*args, **kwargs):
+        if kwargs.get("key") == "download_team_json":
+            downloads.append(kwargs["data"])
+        return original_download_button(*args, **kwargs)
+
+    monkeypatch.setattr(st, "download_button", capture_download)
+
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
+    at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+
+    assert not at.exception
+    assert downloads
+    assert load_team(downloads[-1]) == saved_build()
