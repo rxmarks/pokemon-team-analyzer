@@ -68,3 +68,13 @@ def color_multiplier(value: float) -> str:
     if value < 1:
         return "background-color: #86efac"
     return ""
+
+
+def format_badness_change(improvement: float) -> str:
+    """Display proposed minus current badness; negative means better."""
+    change = -improvement
+
+    if change == 0:
+        return "0"
+
+    return f"{change:+g}".replace("-", "−")

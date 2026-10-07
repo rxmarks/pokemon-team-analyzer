@@ -19,7 +19,13 @@ from pokedex.config import (
     MAX_TEAM_SIZE,
     MIN_BST,
 )
-from pokedex.display import color_multiplier, display_name, format_multiplier, type_badges
+from pokedex.display import (
+    color_multiplier,
+    display_name,
+    format_badness_change,
+    format_multiplier,
+    type_badges,
+)
 from pokedex.export import showdown_export
 from pokedex.fetch import (
     get_all_pokemon_names,
@@ -1031,7 +1037,9 @@ quad_weak = int((table[member_cols] >= 4).to_numpy().sum())
 if not team_complete:
     best_swap = "Unavailable"
 else:
-    best_swap = f"−{swaps[SWAP_GAIN].iloc[0]:g}" if not swaps.empty else "None"
+    best_swap = (
+        format_badness_change(float(swaps[SWAP_GAIN].iloc[0])) if not swaps.empty else "None"
+    )
 
 if not team_complete:
     st.caption(
@@ -1064,7 +1072,11 @@ m4.metric(
 m5.metric(
     "Best swap",
     best_swap,
-    help="Badness drop from the top-ranked eligible single swap.",
+    help=(
+        "Change in team badness for the top-ranked eligible single swap. "
+        "Negative means lower badness; positive means higher badness; "
+        "zero means unchanged badness."
+    ),
 )
 
 summary = summarize_team(team, table, gaps)
@@ -1519,7 +1531,7 @@ with swaps_tab:
             st.button(
                 (
                     f"Preview: {display_name(out_name)} → {display_name(in_name)} "
-                    f"(−{gain:g} badness)"
+                    f"({format_badness_change(float(gain))} badness change)"
                 ),
                 key=f"swap_{index}",
                 on_click=stage_swap,
