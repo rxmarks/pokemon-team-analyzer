@@ -80,6 +80,7 @@ def apply_loadout(state: MutableMapping[str, Any]) -> bool:
     state[f"moves_{proposal.species}"] = list(proposal.proposed_moves)
     state.pop("pending_loadout", None)
     state.pop("pending_swap", None)
+    state.pop("pending_swap_opponents", None)
     reconcile_team(state)
 
     return True

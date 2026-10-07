@@ -49,6 +49,12 @@ SWAP_IN = "candidate"
 SWAP_GAIN = "improvement"
 SWAP_BUTTONS = 5
 
+PARTIAL_OPPONENT_SWAP_MESSAGE = (
+    "Matchup-specific swap suggestions are unavailable until types "
+    "can be loaded for every selected opponent. "
+    "Overall team swaps remain available when your own team is fully loaded."
+)
+
 PARTIAL_TEAM_SWAP_MESSAGE = (
     "Swap suggestions and applying swaps are unavailable until types "
     "can be loaded for every selected team member. "
@@ -165,12 +171,20 @@ def clear_swap_history() -> None:
     st.session_state.pop("pending_loadout", None)
     st.session_state.pop("loadout_notice", None)
     st.session_state.pop("pending_swap", None)
+    st.session_state.pop("pending_swap_opponents", None)
     reconcile_team(st.session_state)
+
+
+def opponent_selection_changed() -> None:
+    """Dismiss only previews that depend on opponent selection."""
+    if st.session_state.get("pending_swap_opponents") is not None:
+        cancel_swap_preview()
 
 
 def replacement_options_changed() -> None:
     """Dismiss a preview without changing the team or its undo history."""
     st.session_state.pop("pending_swap", None)
+    st.session_state.pop("pending_swap_opponents", None)
 
 
 def pool_import_preview() -> PoolImportPreview:
@@ -221,6 +235,7 @@ def apply_pool_import(replace: bool) -> None:
 def locks_changed() -> None:
     """Refresh the snapshot and dismiss a preview when locks change."""
     st.session_state.pop("pending_swap", None)
+    st.session_state.pop("pending_swap_opponents", None)
     reconcile_team(st.session_state)
 
 
@@ -315,6 +330,27 @@ def import_showdown() -> None:
         clear_swap_history()
 
 
+def matchup_context_is_available(expected_opponents: tuple[str, ...]) -> bool:
+    """Require unchanged opponent selection and complete opponent type data."""
+    selected = tuple(st.session_state.get("opponent_team", []))
+
+    if selected != expected_opponents:
+        return False
+
+    loaded: list[str] = []
+
+    for name in selected:
+        try:
+            types = cached_types(name)
+        except requests.RequestException:
+            continue
+
+        if types:
+            loaded.append(name)
+
+    return has_complete_team(selected, loaded)
+
+
 def swap_team_is_available() -> bool:
     """Recheck selected-team types before staging or applying a swap."""
     selected = list(st.session_state.get("team", []))
@@ -333,6 +369,7 @@ def swap_team_is_available() -> bool:
 
     if not complete:
         st.session_state.pop("pending_swap", None)
+        st.session_state.pop("pending_swap_opponents", None)
         st.session_state["swap_safety_notice"] = PARTIAL_TEAM_SWAP_MESSAGE
 
     return complete
@@ -342,6 +379,17 @@ def apply_swap(out_name: str, in_name: str) -> None:
     """Apply a valid replacement and preserve the complete previous build."""
     if not swap_team_is_available():
         return
+    opponent_context = st.session_state.get("pending_swap_opponents")
+
+    if opponent_context is not None:
+        if not matchup_context_is_available(opponent_context):
+            cancel_swap_preview()
+            st.session_state["swap_safety_notice"] = (
+                "The matchup-derived swap was not applied because "
+                "the opponent selection changed or opponent types could not "
+                "be fully loaded. Review the opponent team and preview again."
+            )
+            return
     current = snapshot_team(st.session_state)
 
     if (
@@ -363,10 +411,25 @@ def apply_swap(out_name: str, in_name: str) -> None:
     restore_team(st.session_state, proposed)
 
 
-def stage_swap(out_name: str, in_name: str) -> None:
-    """Stage a valid replacement of an unlocked member."""
+def stage_swap(
+    out_name: str,
+    in_name: str,
+    opponent_context: tuple[str, ...] | None = None,
+) -> None:
+    """Stage a replacement, optionally tied to a selected opponent team."""
     if not swap_team_is_available():
         return
+
+    if opponent_context is not None:
+        if not matchup_context_is_available(opponent_context):
+            cancel_swap_preview()
+            st.session_state["swap_safety_notice"] = (
+                "This matchup recommendation is unavailable because "
+                "the opponent selection changed or opponent types could not "
+                "be fully loaded. Review the opponent team and preview again."
+            )
+            return
+
     current_team = list(st.session_state["team"])
     locks = set(st.session_state.get("locked_members", []))
 
@@ -375,23 +438,41 @@ def stage_swap(out_name: str, in_name: str) -> None:
 
     st.session_state["pending_swap"] = (out_name, in_name)
 
+    if opponent_context is None:
+        st.session_state.pop("pending_swap_opponents", None)
+    else:
+        st.session_state["pending_swap_opponents"] = opponent_context
+
 
 def cancel_swap_preview() -> None:
-    """Dismiss the proposed swap without changing the team."""
+    """Dismiss the proposed swap and its opponent context."""
     st.session_state.pop("pending_swap", None)
+    st.session_state.pop("pending_swap_opponents", None)
 
 
 def confirm_swap_preview() -> None:
-    """Apply the staged swap through the shared undo-aware callback."""
-    pending_swap = st.session_state.pop("pending_swap", None)
-
+    """Validate and apply the staged swap before clearing its context."""
+    pending_swap = st.session_state.get("pending_swap")
+    pending_opponents = st.session_state.get("pending_swap_opponents")
+    if pending_opponents is not None and pending_opponents is not None:
+        if not matchup_context_is_available(pending_opponents):
+            cancel_swap_preview()
+            st.session_state["swap_safety_notice"] = (
+                "The matchup-derived swap was not applied because "
+                "the opponent selection changed or opponent types could not "
+                "be fully loaded. Review the opponent team and preview again."
+            )
+            return
     if pending_swap is not None:
         apply_swap(*pending_swap)
+
+    cancel_swap_preview()
 
 
 def undo_swap() -> None:
     """Restore species, moves, and locks from before the last swap."""
     st.session_state.pop("pending_swap", None)
+    st.session_state.pop("pending_swap_opponents", None)
     previous = st.session_state.pop("team_before_swap", None)
 
     if previous is not None:
@@ -1048,6 +1129,7 @@ with opponent_matchups:
         options=all_names,
         max_selections=MAX_TEAM_SIZE,
         key="opponent_team",
+        on_change=opponent_selection_changed,
         format_func=display_name,
         help=(
             "Choose an opposing team to see which of your Pokémon have favorable, "
@@ -1060,6 +1142,15 @@ with opponent_matchups:
     else:
         with st.spinner("Fetching opponent data..."):
             opponent_team = load_team_types(opponent_names, "the opponent team")
+
+        opponent_complete = has_complete_team(opponent_names, opponent_team)
+
+        if not opponent_complete:
+            st.warning(
+                f"Partial opponent analysis: {len(opponent_team)} of "
+                f"{len(opponent_names)} selected opponents loaded. "
+                "Matchup results cover loaded opponents only."
+            )
 
         if not opponent_team:
             st.warning("Couldn't load any opposing Pokémon. Try again in a moment.")
@@ -1105,7 +1196,7 @@ with opponent_matchups:
 
             matchup_swaps = pd.DataFrame()
 
-            if team_complete:
+            if team_complete and opponent_complete:
                 with st.spinner("Ranking matchup-specific swaps..."):
                     matchup_swaps = cached_matchup_swaps(
                         team,
@@ -1118,6 +1209,8 @@ with opponent_matchups:
 
             if not team_complete:
                 st.info(PARTIAL_TEAM_SWAP_MESSAGE)
+            elif not opponent_complete:
+                st.info(PARTIAL_OPPONENT_SWAP_MESSAGE)
             elif all_members_locked:
                 st.info("All team members are locked. Unlock one to see swap suggestions.")
             elif not eligible_candidates:
@@ -1282,7 +1375,7 @@ with opponent_matchups:
                         f"Preview: {swap_label}",
                         key=f"matchup_swap_{index}",
                         on_click=stage_swap,
-                        args=(out_name, in_name),
+                        args=(out_name, in_name, tuple(opponent_names)),
                     )
 
             st.markdown("#### Opponent threat report")
