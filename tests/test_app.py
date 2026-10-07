@@ -762,3 +762,321 @@ def test_json_download_contains_current_supported_build(monkeypatch):
     assert not at.exception
     assert downloads
     assert load_team(downloads[-1]) == saved_build()
+
+
+def select_available_pool(at, names):
+    at.multiselect(key="available_pokemon").set_value(names).run()
+    assert not at.exception
+
+    at.radio(key="candidate_source").set_value("My available Pokémon").run()
+    assert not at.exception
+
+    return at
+
+
+def test_available_pool_restricts_both_swap_engines():
+    at = run_app_with_team("garchomp,tyranitar")
+    at = select_available_pool(at, ["dragonite"])
+
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+
+    assert not at.exception
+
+    general = next(
+        element.value
+        for element in at.dataframe
+        if {"candidate", "replaces", "improvement"}.issubset(element.value.columns)
+    )
+    targeted = next(
+        element.value
+        for element in at.dataframe
+        if {"candidate", "replaces", "pressure_improvement"}.issubset(element.value.columns)
+    )
+
+    assert general["candidate"].tolist() == ["dragonite"]
+    assert targeted["candidate"].tolist() == ["dragonite"]
+
+
+@pytest.mark.parametrize(
+    "pool",
+    [[], ["garchomp", "tyranitar"]],
+    ids=["empty-pool", "current-members-only"],
+)
+def test_pool_without_replacements_keeps_team_analysis_available(pool):
+    at = run_app_with_team("garchomp,tyranitar")
+    at = select_available_pool(at, pool)
+
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+    assert len(at.metric) >= 5
+    assert "Team" in [header.value for header in at.subheader]
+    assert not any(
+        button.key and button.key.startswith(("swap_", "matchup_swap_")) for button in at.button
+    )
+    assert any(info.value == "No eligible single swaps are available." for info in at.info)
+
+
+def test_available_pool_preserves_build_locks_and_opponents():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+
+    before_url = at.query_params["team"]
+    at = select_available_pool(at, ["dragonite", "togekiss"])
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.multiselect(key="locked_members").value == ["garchomp"]
+    assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
+    assert at.query_params["team"] == before_url
+
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+
+    for element in at.dataframe:
+        table = element.value
+        if {"candidate", "replaces"}.issubset(table.columns):
+            assert set(table["candidate"]) <= {"dragonite", "togekiss"}
+            assert "garchomp" not in set(table["replaces"])
+
+
+def test_pool_changes_clear_preview_and_preserve_undo():
+    at = run_app_with_team("garchomp,tyranitar")
+    at = apply_first_matchup_swap(at)
+    before_team = list(at.multiselect(key="team").value)
+    before_undo = at.session_state["team_before_swap"]
+
+    at.button(key="matchup_swap_0").click().run()
+    assert not at.exception
+    assert any(button.key == "confirm_swap_preview" for button in at.button)
+
+    at.multiselect(key="available_pokemon").set_value(["dragonite"]).run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == before_team
+    assert at.session_state["team_before_swap"] == before_undo
+    assert any(button.key == "undo_swap" for button in at.button)
+    assert not any(button.key == "confirm_swap_preview" for button in at.button)
+
+
+def test_available_pool_selections_survive_mode_changes():
+    at = run_app_with_team("garchomp,tyranitar")
+    at = select_available_pool(at, ["dragonite", "togekiss"])
+
+    at.radio(key="candidate_source").set_value("Current recommendation pool").run()
+    assert not at.exception
+    assert at.multiselect(key="available_pokemon").value == [
+        "dragonite",
+        "togekiss",
+    ]
+
+    at.radio(key="candidate_source").set_value("My available Pokémon").run()
+
+    assert not at.exception
+    assert at.multiselect(key="available_pokemon").value == [
+        "dragonite",
+        "togekiss",
+    ]
+
+
+def test_available_pool_accepts_below_threshold_candidate(monkeypatch):
+    low_stats = {stat: 20 for stat in FAKE_STATS}
+
+    monkeypatch.setattr(
+        threat_ui,
+        "cached_pokemon",
+        lambda: {
+            name: {
+                "types": types,
+                "stats": low_stats if name == "dragonite" else FAKE_STATS,
+            }
+            for name, types in FAKE_TYPES.items()
+        },
+    )
+
+    at = run_app_with_team("garchomp,tyranitar")
+    assert not at.exception
+
+    default_swaps = next(
+        element.value
+        for element in at.dataframe
+        if {"candidate", "replaces", "improvement"}.issubset(element.value.columns)
+    )
+    assert "dragonite" not in set(default_swaps["candidate"])
+
+    at = select_available_pool(at, ["dragonite"])
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+
+    assert not at.exception
+
+    swap_tables = [
+        element.value
+        for element in at.dataframe
+        if {"candidate", "replaces"}.issubset(element.value.columns)
+    ]
+    assert len(swap_tables) == 2
+
+    for table in swap_tables:
+        assert table["candidate"].tolist() == ["dragonite"]
+
+
+@pytest.mark.parametrize(
+    "lookup_fails",
+    [False, True],
+    ids=["lookup-success", "lookup-failure"],
+)
+def test_available_pool_handles_uncached_candidate(monkeypatch, lookup_fails):
+    monkeypatch.setattr(
+        threat_ui,
+        "cached_pokemon",
+        lambda: {
+            name: {
+                "types": types,
+                "stats": FAKE_STATS,
+            }
+            for name, types in FAKE_TYPES.items()
+            if name != "dragonite"
+        },
+    )
+
+    lookups = []
+
+    def lookup_types(name):
+        lookups.append(name)
+        if name == "dragonite" and lookup_fails:
+            raise requests.ConnectionError("offline")
+        return FAKE_TYPES[name]
+
+    monkeypatch.setattr(fetch, "get_types", lookup_types)
+
+    at = run_app_with_team("garchomp,tyranitar")
+    at = select_available_pool(at, ["dragonite", "togekiss"])
+
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+
+    assert not at.exception
+    assert "dragonite" in lookups
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+
+    expected = {"togekiss"} if lookup_fails else {"dragonite", "togekiss"}
+    swap_tables = [
+        element.value
+        for element in at.dataframe
+        if {"candidate", "replaces"}.issubset(element.value.columns)
+    ]
+    assert len(swap_tables) == 2
+
+    for table in swap_tables:
+        assert set(table["candidate"]) == expected
+
+    if lookup_fails:
+        assert any(
+            "Dragonite" in warning.value and "available replacement pool" in warning.value
+            for warning in at.warning
+        )
+
+
+def test_candidate_mode_change_clears_preview_and_preserves_undo():
+    at = run_app_with_team("garchomp,tyranitar")
+    at = apply_first_matchup_swap(at)
+
+    before_team = list(at.multiselect(key="team").value)
+    before_url = at.query_params["team"]
+    before_undo = at.session_state["team_before_swap"]
+
+    at.button(key="matchup_swap_0").click().run()
+    assert not at.exception
+    assert any(button.key == "confirm_swap_preview" for button in at.button)
+
+    at.radio(key="candidate_source").set_value("My available Pokémon").run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == before_team
+    assert at.query_params["team"] == before_url
+    assert at.session_state["team_before_swap"] == before_undo
+    assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
+    assert any(button.key == "undo_swap" for button in at.button)
+    assert not any(button.key == "confirm_swap_preview" for button in at.button)
+
+
+def test_meta_threats_with_empty_usage_keeps_app_running(monkeypatch):
+    usage = threat_ui.cached_usage()
+    monkeypatch.setattr(
+        threat_ui,
+        "cached_usage",
+        lambda: {**usage, "top": []},
+    )
+
+    at = run_app_with_team("garchomp,tyranitar")
+
+    assert not at.exception
+    assert any(info.value == "No Pokémon are listed in the saved usage data." for info in at.info)
+    assert len(at.metric) >= 5
+
+
+def test_meta_threats_without_cache_matches_keeps_app_running(monkeypatch):
+    usage = threat_ui.cached_usage()
+    template = usage["top"][0]
+    missing = {
+        **template,
+        "name": "not-in-cache",
+        "smogon_name": "Not In Cache",
+    }
+
+    monkeypatch.setattr(
+        threat_ui,
+        "cached_usage",
+        lambda: {**usage, "top": [missing]},
+    )
+
+    at = run_app_with_team("garchomp,tyranitar")
+
+    assert not at.exception
+    assert any(
+        "No usage-list Pokémon match the local Pokémon cache." in info.value for info in at.info
+    )
+    assert len(at.metric) >= 5
+    assert not any(
+        {"threat", "usage %"}.issubset(element.value.columns) for element in at.dataframe
+    )
+
+
+def test_meta_threats_reports_partial_cache_matches(monkeypatch):
+    usage = threat_ui.cached_usage()
+    template = usage["top"][0]
+
+    available = {
+        **template,
+        "name": "garchomp",
+        "smogon_name": "Garchomp",
+    }
+    missing = {
+        **template,
+        "name": "not-in-cache",
+        "smogon_name": "Not In Cache",
+    }
+
+    monkeypatch.setattr(
+        threat_ui,
+        "cached_usage",
+        lambda: {**usage, "top": [available, missing]},
+    )
+
+    at = run_app_with_team("garchomp,tyranitar")
+
+    assert not at.exception
+    assert any("Analyzing 1 of 2 usage entries." in warning.value for warning in at.warning)
+
+    table = next(
+        element.value
+        for element in at.dataframe
+        if {"threat", "usage %"}.issubset(element.value.columns)
+    )
+    assert table["threat"].tolist() == ["Garchomp"]
+    assert not any("every top-30" in success.value for success in at.success)
