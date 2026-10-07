@@ -36,6 +36,8 @@ from pokedex.team_session import reconcile_team, restore_team, snapshot_team
 from pokedex.team_state import TeamMember, TeamState
 from pokedex.threat_ui import cached_pokemon, render_meta_threats
 from pokedex.types import Team, TypeChart
+from pokedex.workspace_files import dump_workspace, load_workspace
+from pokedex.workspace_session import restore_workspace, snapshot_workspace
 
 st.set_page_config(page_title="Pokémon Team Analyzer", page_icon="🔴", layout="wide")
 
@@ -211,6 +213,27 @@ def locks_changed() -> None:
     reconcile_team(st.session_state)
 
 
+def import_workspace_json(contents: bytes | None) -> None:
+    """Validate the whole workspace before replacing session state."""
+    if contents is None:
+        st.session_state["workspace_file_error"] = "Choose a workspace JSON file first."
+        st.session_state.pop("workspace_file_success", None)
+        return
+
+    try:
+        imported = load_workspace(
+            contents,
+            valid_species=set(all_names),
+        )
+    except ValueError as exc:
+        st.session_state["workspace_file_error"] = str(exc)
+        st.session_state.pop("workspace_file_success", None)
+        return
+
+    restore_workspace(st.session_state, imported)
+    st.session_state["workspace_file_success"] = "Workspace loaded."
+
+
 def import_team_json(contents: bytes | None) -> None:
     """Validate a saved team before replacing any supported build state."""
     if contents is None:
@@ -357,8 +380,12 @@ def load_team_types(names: list[str], error_context: str) -> Team:
 if "team" not in st.session_state:
     st.session_state["team"] = team_from_url(all_names)
 
-if "opponent_team" not in st.session_state:
-    st.session_state["opponent_team"] = []
+# Preserve these preferences even when their widgets are not rendered.
+st.session_state["opponent_team"] = st.session_state.get("opponent_team", [])
+st.session_state["matchup_improvements_only"] = st.session_state.get(
+    "matchup_improvements_only",
+    True,
+)
 
 if "locked_members" not in st.session_state:
     st.session_state["locked_members"] = []
@@ -578,6 +605,63 @@ with st.expander("Save or load team JSON"):
 
     if success := st.session_state.get("team_file_success"):
         st.success(success)
+
+
+with st.expander("Save or load workspace"):
+    st.caption(
+        "Save your supported team build, available-Pokémon pool, "
+        "replacement source, opponents, and matchup filter. "
+        "Use team JSON when you only want to save a team."
+    )
+    st.caption(
+        "Workspace files do not include swap history, paste text, "
+        "items, abilities, EVs, IVs, or battle-format rules. "
+        "This is a manual file save, not automatic persistence."
+    )
+
+    try:
+        workspace_contents = dump_workspace(snapshot_workspace(st.session_state))
+    except ValueError as exc:
+        st.warning(f"Couldn't prepare workspace download: {exc}")
+    else:
+        st.download_button(
+            "Download workspace JSON",
+            data=workspace_contents,
+            file_name="pokemon-workspace.json",
+            mime="application/json",
+            key="download_workspace_json",
+            on_click="ignore",
+        )
+
+    uploaded_workspace = st.file_uploader(
+        "Choose a saved workspace JSON",
+        type=["json"],
+        key="workspace_json_upload",
+        help=(
+            "Selecting a file changes nothing. Load workspace replaces "
+            "the team, pool, opponents, and saved settings after validation."
+        ),
+    )
+
+    workspace_upload_contents = (
+        uploaded_workspace.getvalue() if uploaded_workspace is not None else None
+    )
+
+    st.button(
+        "Load workspace",
+        key="load_workspace_json",
+        on_click=import_workspace_json,
+        args=(workspace_upload_contents,),
+        disabled=workspace_upload_contents is None,
+        help=("Successful loading clears swap preview, undo history, and old import feedback."),
+    )
+
+    if error := st.session_state.get("workspace_file_error"):
+        st.error(error)
+
+    if success := st.session_state.get("workspace_file_success"):
+        st.success(success)
+
 
 if names:
     st.query_params["team"] = ",".join(names)
@@ -885,7 +969,6 @@ with opponent_matchups:
 
             improvements_only = st.checkbox(
                 "Show only improvements",
-                value=True,
                 key="matchup_improvements_only",
                 help=(
                     "Compare each proposed team with your current team using "

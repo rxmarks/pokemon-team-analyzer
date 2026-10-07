@@ -11,6 +11,11 @@ import pokedex.move_ui as move_ui
 from pokedex import threat_ui
 from pokedex.team_files import dump_team, load_team
 from pokedex.team_state import TeamMember, TeamState
+from pokedex.workspace_files import (
+    WorkspaceState,
+    dump_workspace,
+    load_workspace,
+)
 
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 
@@ -1208,3 +1213,180 @@ def test_bulk_pool_apply_preserves_build_and_undo_but_clears_preview(button_key)
     assert at.session_state["team_before_swap"] == before_undo
     assert any(button.key == "undo_swap" for button in at.button)
     assert not any(button.key == "confirm_swap_preview" for button in at.button)
+
+
+def saved_analysis_workspace():
+    return WorkspaceState(
+        team=saved_build(),
+        available_pokemon=("togekiss", "dragonite"),
+        candidate_source="custom",
+        opponent_team=("ferrothorn", "gyarados"),
+        matchup_improvements_only=False,
+    )
+
+
+def test_workspace_load_restores_all_settings_and_clears_history(monkeypatch):
+    mock_team_upload(
+        monkeypatch,
+        dump_workspace(saved_analysis_workspace()),
+    )
+
+    at = run_app_with_team("garchomp,tyranitar")
+    at = apply_first_matchup_swap(at)
+    at.button(key="matchup_swap_0").click().run()
+    assert not at.exception
+
+    at.text_area(key="showdown_paste").input("Old team paste").run()
+    at.text_area(key="pool_paste").input("Dragonite").run()
+
+    at.button(key="load_workspace_json").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    assert at.multiselect(key="locked_members").value == ["garchomp"]
+    assert at.multiselect(key="available_pokemon").value == [
+        "togekiss",
+        "dragonite",
+    ]
+    assert at.radio(key="candidate_source").value == "My available Pokémon"
+    assert at.multiselect(key="opponent_team").value == [
+        "ferrothorn",
+        "gyarados",
+    ]
+    assert at.checkbox(key="matchup_improvements_only").value is False
+    assert at.text_area(key="showdown_paste").value == ""
+    assert at.text_area(key="pool_paste").value == ""
+    assert not any(button.key == "undo_swap" for button in at.button)
+    assert not any(button.key == "confirm_swap_preview" for button in at.button)
+
+    url_team = at.query_params["team"]
+    assert url_team in ("garchomp,tyranitar", ["garchomp,tyranitar"])
+    assert any(success.value == "Workspace loaded." for success in at.success)
+
+
+@pytest.mark.parametrize(
+    "problem",
+    ["invalid-json", "team-only", "unknown-pool-species"],
+)
+def test_failed_workspace_load_preserves_existing_state(monkeypatch, problem):
+    if problem == "invalid-json":
+        contents = "{"
+    elif problem == "team-only":
+        contents = dump_team(saved_build())
+    else:
+        contents = dump_workspace(
+            WorkspaceState(
+                available_pokemon=("missingno",),
+                candidate_source="custom",
+            )
+        )
+
+    mock_team_upload(monkeypatch, contents)
+
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+    at = select_available_pool(at, ["dragonite", "togekiss"])
+    at = apply_first_matchup_swap(at)
+    at.button(key="matchup_swap_0").click().run()
+    assert not at.exception
+
+    before_team = list(at.multiselect(key="team").value)
+    before_url = at.query_params["team"]
+    before_undo = at.session_state["team_before_swap"]
+    before_preview = at.session_state["pending_swap"]
+
+    at.button(key="load_workspace_json").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == before_team
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.multiselect(key="locked_members").value == ["garchomp"]
+    assert at.multiselect(key="available_pokemon").value == [
+        "dragonite",
+        "togekiss",
+    ]
+    assert at.radio(key="candidate_source").value == "My available Pokémon"
+    assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
+    assert at.checkbox(key="matchup_improvements_only").value is False
+    assert at.query_params["team"] == before_url
+    assert at.session_state["team_before_swap"] == before_undo
+    assert at.session_state["pending_swap"] == before_preview
+    assert at.error
+
+
+def test_empty_team_workspace_preserves_hidden_opponents_and_filter(monkeypatch):
+    workspace = WorkspaceState(
+        available_pokemon=("dragonite",),
+        candidate_source="custom",
+        opponent_team=("ferrothorn",),
+        matchup_improvements_only=False,
+    )
+    mock_team_upload(monkeypatch, dump_workspace(workspace))
+
+    at = run_app_with_team("garchomp")
+    at.button(key="load_workspace_json").click().run()
+    at.run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == []
+    assert "team" not in at.query_params
+    assert at.session_state["opponent_team"] == ["ferrothorn"]
+    assert at.session_state["matchup_improvements_only"] is False
+    assert at.multiselect(key="available_pokemon").value == ["dragonite"]
+
+    at.multiselect(key="team").set_value(["garchomp"]).run()
+
+    assert not at.exception
+    assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
+    assert at.checkbox(key="matchup_improvements_only").value is False
+
+
+def test_matchup_filter_survives_hidden_widget():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+
+    at.multiselect(key="opponent_team").set_value([]).run()
+    at.run()
+
+    assert not at.exception
+    assert at.session_state["matchup_improvements_only"] is False
+
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+
+    assert not at.exception
+    assert at.checkbox(key="matchup_improvements_only").value is False
+
+
+def test_workspace_load_button_disabled_without_file():
+    at = run_app()
+
+    assert not at.exception
+    assert at.button(key="load_workspace_json").disabled
+
+
+def test_workspace_download_contains_current_build_and_preferences(monkeypatch):
+    downloads = []
+    original_download_button = st.download_button
+
+    def capture_download(*args, **kwargs):
+        if kwargs.get("key") == "download_workspace_json":
+            downloads.append(kwargs["data"])
+        return original_download_button(*args, **kwargs)
+
+    monkeypatch.setattr(st, "download_button", capture_download)
+
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
+    at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+    at = select_available_pool(at, ["togekiss", "dragonite"])
+    at.multiselect(key="opponent_team").set_value(["ferrothorn", "gyarados"]).run()
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+
+    assert not at.exception
+    assert downloads
+    assert load_workspace(downloads[-1]) == saved_analysis_workspace()
