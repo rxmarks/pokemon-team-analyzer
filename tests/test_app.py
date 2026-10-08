@@ -79,6 +79,20 @@ def run_app_with_team(team: str):
     return at.run()
 
 
+def app_tab(at, label):
+    matches = [tab for tab in at.tabs if tab.label == label]
+    assert len(matches) == 1, f"Expected exactly one tab named {label!r}"
+    return matches[0]
+
+
+def base_stat_tables(container):
+    return [
+        element.value
+        for element in container.dataframe
+        if set(FAKE_STATS).issubset(element.value.columns)
+    ]
+
+
 def test_app_loads_default_team():
     at = run_app()
 
@@ -88,13 +102,9 @@ def test_app_loads_default_team():
 
     tabs = [tab.label for tab in at.tabs]
     assert tabs == [
-        "Defense",
-        "Offense",
-        "Moves",
+        "Team builder",
+        "Swap suggestions",
         "Opponent matchups",
-        "Meta threats",
-        "Stats",
-        "Swaps",
     ]
 
 
@@ -2153,7 +2163,7 @@ def test_stat_failures_preserve_type_analysis(monkeypatch, failed_names):
     assert not at.exception
     assert attempted_names == ["garchomp", "tyranitar"]
     assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
-    assert len(at.tabs) == 7
+    assert len(at.tabs) == 3
     assert len(at.metric) >= 5
     assert any(element.value == "### What to review" for element in at.markdown)
     assert any(
@@ -2162,27 +2172,34 @@ def test_stat_failures_preserve_type_analysis(monkeypatch, failed_names):
         for warning in at.warning
     )
 
-    moves_tab = at.tabs[2]
+    moves_tab = app_tab(at, "Team builder")
     assert moves_tab.multiselect(key="moves_garchomp")
     assert moves_tab.multiselect(key="moves_tyranitar")
-    assert any("Suggested move loadouts are unavailable" in info.value for info in moves_tab.info)
+    assert any(
+        "Suggested move loadouts are unavailable" in info.value
+        for info in app_tab(at, "Swap suggestions").info
+    )
 
-    stats_tab = at.tabs[5]
+    stats_tab = app_tab(at, "Team builder")
+    stat_tables = base_stat_tables(stats_tab)
     if len(failed_names) == 1:
-        assert len(stats_tab.dataframe) == 1
-        assert list(stats_tab.dataframe[0].value.index) == ["tyranitar"]
+        assert len(stat_tables) == 1
+        assert list(stat_tables[0].index) == ["tyranitar"]
         assert any(
             "Partial base-stat table: 1 of 2 analyzed members loaded." in warning.value
             for warning in stats_tab.warning
         )
     else:
-        assert len(stats_tab.dataframe) == 0
+        assert stat_tables == []
         assert any(
             "Base stats are unavailable for all analyzed members." in info.value
             for info in stats_tab.info
         )
 
-    assert not stats_tab.success
+    assert not any(
+        success.value == "Team has speed, physical, and special attackers covered."
+        for success in stats_tab.success
+    )
     assert "Suggested move loadouts" not in [header.value for header in at.subheader]
 
 
@@ -2220,15 +2237,17 @@ def test_stat_features_recover_without_losing_selected_moves(monkeypatch):
     assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
     assert "Suggested move loadouts" in [header.value for header in at.subheader]
 
-    stats_tab = at.tabs[5]
-    assert len(stats_tab.dataframe) == 1
-    assert list(stats_tab.dataframe[0].value.index) == [
+    stats_tab = app_tab(at, "Team builder")
+    stat_tables = base_stat_tables(stats_tab)
+    assert len(stat_tables) == 1
+    assert list(stat_tables[0].index) == [
         "garchomp",
         "tyranitar",
     ]
     assert not any("Couldn't load base stats for:" in warning.value for warning in at.warning)
     assert not any(
-        "Suggested move loadouts are unavailable" in info.value for info in at.tabs[2].info
+        "Suggested move loadouts are unavailable" in info.value
+        for info in app_tab(at, "Swap suggestions").info
     )
 
 
@@ -2256,7 +2275,7 @@ def test_partial_team_blocks_swap_rankings_and_clears_preview(monkeypatch):
 
     assert not at.exception
     assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
-    assert len(at.tabs) == 7
+    assert len(at.tabs) == 3
 
     best_swap = next(metric for metric in at.metric if metric.label == "Best swap")
     assert best_swap.value == "Unavailable"
@@ -2271,11 +2290,11 @@ def test_partial_team_blocks_swap_rankings_and_clears_preview(monkeypatch):
 
     assert any(
         "Swap suggestions and applying swaps are unavailable" in info.value
-        for info in at.tabs[3].info
+        for info in app_tab(at, "Opponent matchups").info
     )
     assert any(
         "Swap suggestions and applying swaps are unavailable" in info.value
-        for info in at.tabs[6].info
+        for info in app_tab(at, "Swap suggestions").info
     )
 
 
@@ -2389,7 +2408,7 @@ def test_partial_opponents_skip_matchup_ranking_only(monkeypatch):
     assert any(key.startswith("swap_") for key in button_keys)
     assert not any(key.startswith("matchup_swap_") for key in button_keys)
 
-    matchup_tab = at.tabs[3]
+    matchup_tab = app_tab(at, "Opponent matchups")
     assert any(
         "Partial opponent analysis: 1 of 2 selected opponents loaded." in warning.value
         for warning in matchup_tab.warning
@@ -2527,3 +2546,31 @@ def test_swap_preview_renders_type_explanation():
     )
     assert at.button(key="confirm_swap_preview")
     assert at.button(key="cancel_swap_preview")
+
+
+def test_three_view_layout_places_controls_in_expected_views():
+    at = run_app_with_team("garchomp,tyranitar")
+
+    assert not at.exception
+    builder = app_tab(at, "Team builder")
+    suggestions = app_tab(at, "Swap suggestions")
+    matchups = app_tab(at, "Opponent matchups")
+
+    assert builder.multiselect(key="team")
+    assert builder.multiselect(key="moves_garchomp")
+    assert builder.multiselect(key="moves_tyranitar")
+    assert builder.button(key="import_btn")
+    assert builder.button(key="load_team_json")
+    assert builder.button(key="load_workspace_json")
+    assert any(expander.label == "Import / export / saved files" for expander in builder.expander)
+    assert len(base_stat_tables(builder)) == 1
+    assert suggestions.multiselect(key="available_pokemon")
+    assert "Suggested move loadouts" in [header.value for header in suggestions.subheader]
+    assert "Suggested move loadouts" not in [header.value for header in builder.subheader]
+    assert matchups.multiselect(key="opponent_team")
+
+    for key in ("moves_garchomp", "moves_tyranitar"):
+        assert sum(widget.key == key for widget in at.multiselect) == 1
+    assert suggestions.multiselect(key="locked_members")
+    assert not any(widget.key == "locked_members" for widget in builder.multiselect)
+    assert sum(widget.key == "locked_members" for widget in at.multiselect) == 1

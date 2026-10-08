@@ -1,4 +1,4 @@
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 from typing import Any, cast
 
 import requests
@@ -6,6 +6,7 @@ import streamlit as st
 
 from pokedex.analysis import move_coverage_gaps
 from pokedex.config import CACHE_TTL_SECONDS, MAX_MOVES
+from pokedex.display import display_name, type_badges
 from pokedex.fetch import get_learnable_moves, load_move_cache
 from pokedex.move_details import selected_move_details
 from pokedex.team_session import reconcile_team
@@ -36,60 +37,46 @@ def moves_changed() -> None:
     reconcile_team(state)
 
 
-def render_move_coverage(team: Team, type_chart: TypeChart) -> None:
-    st.subheader("Move-based coverage")
-    st.caption(
-        "Pick up to 4 moves per Pokémon. Status moves are preserved but do not "
-        "contribute to offensive coverage. Learnsets are not format-legality checks."
-    )
-    st.caption(
-        "Selected-move details show cached metadata. Base power is not "
-        "calculated battle damage. A missing power value does not necessarily "
-        "mean coverage data is unavailable. Coverage status describes this "
-        "app's type calculation, not move legality or a guaranteed matchup."
-    )
+def render_member_move_editor(name: str, move_cache: MoveCache) -> list[str]:
+    """Render one editor while preserving selected and unverified moves."""
+    key = f"moves_{name}"
+    selected = list(st.session_state.get(key, []))
 
-    move_cache = cached_move_cache()
-    team_moves: dict[str, list[str]] = {}
-
-    for name in team:
-        key = f"moves_{name}"
-        selected = list(st.session_state.get(key, []))
-
-        try:
-            learnable = cached_learnable_moves(name)
-        except requests.RequestException:
-            learnable = []
-            st.warning(
-                f"Couldn't load moves for {pretty(name)} from PokeAPI. "
-                "Existing selections are preserved but cannot be verified."
-            )
-        else:
-            unverified = [move for move in selected if move not in learnable]
-            if unverified:
-                st.warning(
-                    f"Selected moves for {pretty(name)} were not found in the "
-                    "available learnset: "
-                    + ", ".join(pretty(move) for move in unverified)
-                    + ". They are preserved; check the intended format separately."
-                )
-
-        options = sorted(set(learnable) | set(selected))
-
-        team_moves[name] = st.multiselect(
-            pretty(name),
-            options=options,
-            max_selections=MAX_MOVES,
-            format_func=pretty,
-            key=key,
-            on_change=moves_changed,
+    try:
+        learnable = cached_learnable_moves(name)
+    except requests.RequestException:
+        learnable = []
+        st.warning(
+            f"Couldn't load moves for {pretty(name)} from PokeAPI. "
+            "Existing selections are preserved but cannot be verified."
         )
+    else:
+        unverified = [move for move in selected if move not in learnable]
+        if unverified:
+            st.warning(
+                f"Selected moves for {pretty(name)} were not found in the "
+                "available learnset: "
+                + ", ".join(pretty(move) for move in unverified)
+                + ". They are preserved; check the intended format separately."
+            )
 
-        if team_moves[name]:
-            st.caption(f"Selected moves for {pretty(name)}")
+    options = sorted(set(learnable) | set(selected))
 
+    chosen = st.multiselect(
+        "Selected moves",
+        options=options,
+        max_selections=MAX_MOVES,
+        format_func=pretty,
+        key=key,
+        on_change=moves_changed,
+    )
+
+    st.caption(f"{len(chosen)}/{MAX_MOVES} moves selected")
+
+    if chosen:
+        with st.expander(f"Move details — {display_name(name)}"):
             st.dataframe(
-                selected_move_details(team_moves[name], move_cache),
+                selected_move_details(chosen, move_cache),
                 width="stretch",
                 hide_index=True,
                 column_config={
@@ -113,6 +100,54 @@ def render_move_coverage(team: Team, type_chart: TypeChart) -> None:
                     ),
                 },
             )
+
+    return chosen
+
+
+def render_move_coverage(
+    team: Team,
+    type_chart: TypeChart,
+    *,
+    sprite_lookup: Callable[[str], str | None] | None = None,
+) -> None:
+    """Render member cards, then team-wide selected-move coverage."""
+    st.subheader("Team")
+    st.caption("Choose up to 4 moves per member. Review suggested changes in Swap suggestions.")
+
+    with st.expander("How move selection and coverage work"):
+        st.markdown(
+            "- Status moves are preserved but do not contribute to offensive coverage.\n"
+            "- Available learnsets are not battle-format legality checks.\n"
+            "- Move details use cached metadata; base power is not calculated damage.\n"
+            "- Missing power does not necessarily mean coverage data is unavailable.\n"
+            "- Coverage describes this app's type calculation, not a guaranteed matchup."
+        )
+
+    move_cache = cached_move_cache()
+    team_moves: dict[str, list[str]] = {}
+    names = list(team)
+    columns_per_row = min(3, len(names)) or 1
+    locks = set(st.session_state.get("locked_members", []))
+
+    for start in range(0, len(names), columns_per_row):
+        columns = st.columns(columns_per_row)
+        row_names = names[start : start + columns_per_row]
+
+        for column, name in zip(columns, row_names, strict=False):
+            with column:
+                with st.container(border=True):
+                    if sprite_lookup is not None:
+                        sprite = sprite_lookup(name)
+                        if sprite:
+                            st.image(sprite, width=80)
+
+                    st.markdown(f"**{display_name(name)}**")
+                    st.markdown(type_badges(team[name]), unsafe_allow_html=True)
+                    if name in locks:
+                        st.caption("Locked against replacement")
+                    team_moves[name] = render_member_move_editor(name, move_cache)
+
+    st.markdown("#### Selected-move coverage")
 
     unknown_moves = sorted(
         {move for moves in team_moves.values() for move in moves if move not in move_cache}
