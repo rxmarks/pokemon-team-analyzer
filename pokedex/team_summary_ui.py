@@ -18,7 +18,7 @@ def render_team_summary(
     st.markdown("### What to review")
     st.caption(
         "Type-based checks only—not a battle simulation or an overall team rating. "
-        "Selected moves are analyzed separately in the Moves tab."
+        "Selected moves are analyzed separately in the Team builder tab."
     )
 
     if analyzed_count < selected_count:
@@ -44,7 +44,7 @@ def render_team_summary(
             extra = f"; plus {remaining} other {noun}"
         st.markdown(
             f"- Shared weaknesses: {details}{extra}. "
-            "Review the Defense tab before considering replacements."
+            "Review Defensive coverage in Team builder before considering replacements."
         )
     else:
         st.markdown(
@@ -73,7 +73,7 @@ def render_team_summary(
         gaps = ", ".join(attack_type.title() for attack_type in summary.native_coverage_gaps)
         st.markdown(
             f"- Native-type coverage gaps: {gaps}. "
-            "Check selected moves in the Moves tab before deciding "
+            "Check selected moves in Team builder before deciding "
             "a replacement is needed."
         )
     else:
