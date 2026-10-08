@@ -113,10 +113,10 @@ def test_summary_metrics_render():
 
     assert not at.exception
     assert [metric.label for metric in at.metric][:5] == [
-        "Team badness",
+        "Type-balance score",
         "Shared weaknesses",
-        "Coverage gaps",
-        "4x weaknesses",
+        "Types to cover",
+        "4× weaknesses",
         "Best swap",
     ]
 
@@ -1508,7 +1508,10 @@ def test_empty_move_selection_does_not_render_details():
 
     assert not at.exception
     assert selected_move_tables(at) == []
-    assert any(info.value == "Pick some moves to see move-based coverage gaps." for info in at.info)
+    assert any(
+        info.value == "Add moves to see which types your team can hit super-effectively."
+        for info in at.info
+    )
 
 
 def test_selected_move_details_remain_after_learnset_failure(monkeypatch):
@@ -2083,22 +2086,13 @@ def test_team_summary_shows_existing_analysis_findings():
     at = run_app_with_team("garchomp,tyranitar")
 
     assert not at.exception
-
     markdown_values = [element.value for element in at.markdown]
-
-    assert "### What to review" in markdown_values
-    assert any(
-        value.startswith("- Shared weaknesses:")
-        and "Fairy (2 members: Garchomp, Tyranitar)" in value
-        for value in markdown_values
-    )
-    assert any(
-        value.startswith("- 4× weaknesses:")
-        and "Garchomp to Ice" in value
-        and "Tyranitar to Fighting" in value
-        for value in markdown_values
-    )
-    assert any(value.startswith("- Native-type coverage gaps:") for value in markdown_values)
+    assert "### At a glance" in markdown_values
+    assert "#### Shared weaknesses" in markdown_values
+    assert any("Fairy (2 members: Garchomp, Tyranitar)" in value for value in markdown_values)
+    assert any("Garchomp to Ice" in value for value in markdown_values)
+    assert any("Tyranitar to Fighting" in value for value in markdown_values)
+    assert "#### Types to cover" in markdown_values
     assert any(
         "not a battle simulation or an overall team rating" in caption.value
         for caption in at.caption
@@ -2110,18 +2104,10 @@ def test_team_summary_updates_after_direct_team_edit():
     at.multiselect(key="team").set_value(["garchomp"]).run()
 
     assert not at.exception
-
     markdown_values = [element.value for element in at.markdown]
-
-    assert (
-        "- Shared weaknesses: no attack type hits two or more analyzed members super-effectively."
-    ) in markdown_values
-    assert any(
-        value.startswith("- 4× weaknesses:")
-        and "Garchomp to Ice" in value
-        and "Tyranitar" not in value
-        for value in markdown_values
-    )
+    assert "No shared type weaknesses among the analyzed members." in markdown_values
+    assert any("Garchomp to Ice" in value for value in markdown_values)
+    assert not any("Tyranitar to Fighting" in value for value in markdown_values)
 
 
 @pytest.mark.parametrize(
@@ -2165,7 +2151,7 @@ def test_stat_failures_preserve_type_analysis(monkeypatch, failed_names):
     assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
     assert len(at.tabs) == 3
     assert len(at.metric) >= 5
-    assert any(element.value == "### What to review" for element in at.markdown)
+    assert any(element.value == "### At a glance" for element in at.markdown)
     assert any(
         "Couldn't load base stats for:" in warning.value
         and "Type-based analysis remains available." in warning.value
@@ -2574,3 +2560,105 @@ def test_three_view_layout_places_controls_in_expected_views():
     assert suggestions.multiselect(key="locked_members")
     assert not any(widget.key == "locked_members" for widget in builder.multiselect)
     assert sum(widget.key == "locked_members" for widget in at.multiselect) == 1
+
+
+def test_beginner_friendly_sections_render():
+    at = run_app_with_team("garchomp,tyranitar")
+
+    assert not at.exception
+    builder = app_tab(at, "Team builder")
+    labels = [expander.label for expander in builder.expander]
+    assert "Coverage from selected moves" in labels
+    assert "Type-balance details" in labels
+    assert "Team roles" in labels
+    assert "Compare all base stats" in labels
+    assert "Coverage from your Pokémon’s types" in labels
+    assert any("Moves are optional" in caption.value for caption in builder.caption)
+    markdown_values = [element.value for element in builder.markdown]
+    assert markdown_values.index("### At a glance") < markdown_values.index("### Coverage details")
+    assert len(base_stat_tables(builder)) == 1
+
+
+def test_compact_cards_preserve_moves_and_lock_indicator():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+    at.run()
+
+    assert not at.exception
+    builder = app_tab(at, "Team builder")
+    suggestions = app_tab(at, "Swap suggestions")
+    assert builder.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert suggestions.multiselect(key="locked_members").value == ["garchomp"]
+    assert any(caption.value == "Kept on team" for caption in builder.caption)
+    assert any(caption.value == "1 of 4 moves selected" for caption in builder.caption)
+    for key in ("moves_garchomp", "moves_tyranitar", "locked_members"):
+        assert sum(widget.key == key for widget in at.multiselect) == 1
+
+
+@pytest.fixture
+def captured_stat_bars(monkeypatch):
+    bars = []
+    original_progress = st.progress
+
+    def capture(value, *args, **kwargs):
+        bars.append((value, kwargs.get("text")))
+        return original_progress(value, *args, **kwargs)
+
+    monkeypatch.setattr(st, "progress", capture)
+    return bars
+
+
+def test_member_stat_bars_render_values_and_shared_scale(monkeypatch, captured_stat_bars):
+    second_stats = {key: value + 10 for key, value in FAKE_STATS.items()}
+    monkeypatch.setattr(
+        fetch,
+        "stats_cache_first",
+        lambda name, cache: FAKE_STATS if name == "garchomp" else second_stats,
+    )
+    st.cache_data.clear()
+    at = run_app_with_team("garchomp,tyranitar")
+
+    assert not at.exception
+    builder = app_tab(at, "Team builder")
+    labels = [expander.label for expander in builder.expander]
+    assert "Base stats — Garchomp" in labels
+    assert "Base stats — Tyranitar" in labels
+    expected = [
+        (stats[key] / move_ui.STAT_BAR_SCALE, f"{label}: {stats[key]}")
+        for stats in (FAKE_STATS, second_stats)
+        for key, label in move_ui.STAT_LABELS
+    ]
+    assert len(captured_stat_bars) == len(expected)
+    for (fraction, text), (expected_fraction, expected_text) in zip(
+        captured_stat_bars, expected, strict=True
+    ):
+        assert fraction == pytest.approx(expected_fraction)
+        assert text == expected_text
+
+
+@pytest.mark.parametrize(
+    "failed_names",
+    [{"garchomp"}, {"garchomp", "tyranitar"}],
+    ids=["partial-stat-failure", "all-stat-lookups-fail"],
+)
+def test_member_stat_bars_handle_missing_stats(monkeypatch, captured_stat_bars, failed_names):
+    def lookup(name, cache):
+        if name in failed_names:
+            raise requests.ConnectionError("offline")
+        return FAKE_STATS
+
+    monkeypatch.setattr(fetch, "stats_cache_first", lookup)
+    st.cache_data.clear()
+    at = run_app_with_team("garchomp,tyranitar")
+
+    assert not at.exception
+    builder = app_tab(at, "Team builder")
+    assert len(captured_stat_bars) == 6 * (2 - len(failed_names))
+    for name in failed_names:
+        label = name.replace("-", " ").title()
+        panel = next(
+            expander for expander in builder.expander if expander.label == f"Base stats — {label}"
+        )
+        assert any(f"Stats couldn't be loaded for {label}." in info.value for info in panel.info)
+        assert builder.multiselect(key=f"moves_{name}")
