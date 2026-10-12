@@ -141,7 +141,7 @@ with st.sidebar:
     st.markdown(
         "Analyzes a Pokémon team's type matchups and suggests swaps.\n\n"
         "- **Team builder:** choose members and moves; inspect stats and coverage\n"
-        "- **Swap suggestions:** preview move loadouts and Pokémon replacements\n"
+        "- **Swap suggestions:** preview suggested moves and Pokémon replacements\n"
         "- **Opponent matchups:** compare teams and inspect matchup replacements\n"
         "- **Meta threats:** a separate Smogon dataset within Opponent matchups\n\n"
         "**Data:** [PokeAPI](https://pokeapi.co) · "
@@ -548,9 +548,9 @@ with team_builder:
 
     if "team_before_swap" in st.session_state:
         out_name, in_name = st.session_state["last_swap"]
-        st.caption(f"Last swap: {display_name(out_name)} → {display_name(in_name)}")
+        st.caption(f"Last replacement: {display_name(out_name)} → {display_name(in_name)}")
         st.button(
-            "Undo last swap",
+            "Undo last replacement",
             key="undo_swap",
             on_click=undo_swap,
             help="Restore your team before the most recent swap.",
@@ -893,7 +893,7 @@ if missing_stats:
     st.warning(
         f"Couldn't load base stats for: {missing_names}. "
         "Type-based analysis remains available. "
-        "Stat checks and suggested move loadouts require stats "
+        "Stat checks and suggested moves require stats "
         "for every analyzed member."
     )
 
@@ -983,12 +983,13 @@ with team_builder:
             help="Member/type pairs taking quadruple damage.",
         )
         m5.metric(
-            "Best swap",
+            "Top replacement score change",
             best_swap,
             help=(
-                "Change in team badness for the top-ranked eligible single swap. "
-                "Negative means lower badness; positive means higher badness; "
-                "zero means unchanged badness."
+                "Proposed minus current type-balance score "
+                "for the top-ranked replacement. "
+                "Negative means a lower score; positive means a higher score; "
+                "zero means no score change."
             ),
         )
         st.caption(
@@ -1062,7 +1063,7 @@ with team_builder:
 
         with st.expander("How to read coverage gaps"):
             st.markdown(
-                "This checks only your Pokémon's own types (STAB). "
+                "This checks attacks matching your Pokémon's own types. "
                 "A gap means no team member's type is super-effective "
                 "against that type. Selected-move coverage accounts "
                 "for actual moves."
@@ -1074,7 +1075,7 @@ with swap_suggestions:
         render_loadout_suggestions(team, chart, team_stats)
     else:
         st.info(
-            "Suggested move loadouts are unavailable until base stats "
+            "Suggested moves are unavailable until base stats "
             "can be loaded for every analyzed member. "
             "Selected-move coverage remains available."
         )
@@ -1370,7 +1371,7 @@ with opponent_matchups:
                                 ),
                             ),
                             "new_badness": st.column_config.NumberColumn(
-                                "New badness",
+                                "Proposed type-balance score",
                                 help="Overall team score after the swap. Lower is better.",
                             ),
                             "weak_total": st.column_config.NumberColumn(
@@ -1388,8 +1389,11 @@ with opponent_matchups:
                                 help="Proposed balance minus current balance. Positive is better.",
                             ),
                             "badness_improvement": st.column_config.NumberColumn(
-                                "Badness improvement",
-                                help="Current badness minus proposed badness. Positive is better.",
+                                "Type-balance score reduction",
+                                help=(
+                                    "Current score minus proposed score. "
+                                    "Positive means a lower score."
+                                ),
                             ),
                             "weakness_improvement": st.column_config.NumberColumn(
                                 "Weakness improvement",
@@ -1495,7 +1499,7 @@ with opponent_matchups:
                     in_name = row.candidate
                     swap_label = f"{display_name(out_name)} → {display_name(in_name)}"
 
-                    with st.expander(f"Why this swap? {swap_label}"):
+                    with st.expander(f"Why this replacement? {swap_label}"):
                         if row.pressure_improvement > 0:
                             st.write("Primary benefit: lower opponent threat pressure.")
                         elif row.pressure_improvement < 0:
@@ -1509,11 +1513,12 @@ with opponent_matchups:
                             st.write("Downside: lower matchup balance.")
                         elif row.badness_improvement > 0:
                             st.write(
-                                "Opponent metrics are unchanged; overall team badness improves."
+                                "Opponent metrics are unchanged; "
+                                "the overall type-balance score decreases."
                             )
                         elif row.weakness_improvement > 0:
                             st.write(
-                                "Opponent metrics and badness are unchanged; "
+                                "Opponent metrics and the type-balance score are unchanged; "
                                 "the team has fewer weakness pairs."
                             )
                         elif row.is_improvement:
@@ -1523,7 +1528,7 @@ with opponent_matchups:
 
                         if row.badness_improvement < 0:
                             st.warning(
-                                "Tradeoff: overall team badness increases by "
+                                "Tradeoff: overall type-balance score increases by "
                                 f"{-row.badness_improvement:g}."
                             )
                         if row.weakness_improvement < 0:
@@ -1633,7 +1638,7 @@ with preview_container:
         if out_name not in team or in_name in team or out_name in locked_members:
             cancel_swap_preview()
         else:
-            st.subheader("Swap preview")
+            st.subheader("Replacement preview")
             st.write(f"Replace {display_name(out_name)} with {display_name(in_name)}.")
 
             try:
@@ -1644,7 +1649,7 @@ with preview_container:
                     "Cancel or try again shortly."
                 )
                 st.button(
-                    "Cancel preview",
+                    "Cancel replacement preview",
                     key="cancel_swap_preview",
                     on_click=cancel_swap_preview,
                 )
@@ -1666,7 +1671,7 @@ with preview_container:
                 preview_comparison = pd.DataFrame(
                     [
                         {
-                            "Metric": "Overall team badness",
+                            "Metric": "Overall type-balance score",
                             "Current": current_badness,
                             "Proposed": proposed_badness,
                             "Improvement": current_badness - proposed_badness,
@@ -1705,14 +1710,14 @@ with preview_container:
                 apply_col, cancel_col = st.columns(2)
                 with apply_col:
                     st.button(
-                        "Apply swap",
+                        "Apply replacement",
                         key="confirm_swap_preview",
                         on_click=confirm_swap_preview,
                         type="primary",
                     )
                 with cancel_col:
                     st.button(
-                        "Cancel preview",
+                        "Cancel replacement preview",
                         key="cancel_swap_preview",
                         on_click=cancel_swap_preview,
                     )

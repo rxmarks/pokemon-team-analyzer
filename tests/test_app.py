@@ -117,7 +117,7 @@ def test_summary_metrics_render():
         "Shared weaknesses",
         "Types to cover",
         "4× weaknesses",
-        "Best swap",
+        "Top replacement score change",
     ]
 
 
@@ -125,7 +125,7 @@ def test_loadout_section_renders():
     at = run_app()
 
     assert not at.exception
-    assert "Suggested move loadouts" in [header.value for header in at.subheader]
+    assert "Suggested moves" in [header.value for header in at.subheader]
 
 
 def test_app_with_empty_team_shows_prompt():
@@ -384,7 +384,7 @@ def test_matchup_swap_explanations_render():
     at.checkbox(key="matchup_improvements_only").uncheck().run()
 
     assert not at.exception
-    assert any(expander.label.startswith("Why this swap?") for expander in at.expander)
+    assert any(expander.label.startswith("Why this replacement?") for expander in at.expander)
 
     explanation_tables = [
         element.value
@@ -481,7 +481,7 @@ def test_swap_preview_does_not_change_team_or_url():
     assert not at.exception
     assert at.multiselect(key="team").value == before
     assert at.query_params["team"] == before_url
-    assert "Swap preview" in [header.value for header in at.subheader]
+    assert "Replacement preview" in [header.value for header in at.subheader]
     assert any(button.key == "confirm_swap_preview" for button in at.button)
 
 
@@ -2162,7 +2162,7 @@ def test_stat_failures_preserve_type_analysis(monkeypatch, failed_names):
     assert moves_tab.multiselect(key="moves_garchomp")
     assert moves_tab.multiselect(key="moves_tyranitar")
     assert any(
-        "Suggested move loadouts are unavailable" in info.value
+        "Suggested moves are unavailable" in info.value
         for info in app_tab(at, "Swap suggestions").info
     )
 
@@ -2186,7 +2186,7 @@ def test_stat_failures_preserve_type_analysis(monkeypatch, failed_names):
         success.value == "Team has speed, physical, and special attackers covered."
         for success in stats_tab.success
     )
-    assert "Suggested move loadouts" not in [header.value for header in at.subheader]
+    assert "Suggested moves" not in [header.value for header in at.subheader]
 
 
 def test_stat_features_recover_without_losing_selected_moves(monkeypatch):
@@ -2207,7 +2207,7 @@ def test_stat_features_recover_without_losing_selected_moves(monkeypatch):
     assert at.multiselect(key="team").value == team_before
     assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
     assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
-    assert "Suggested move loadouts" not in [header.value for header in at.subheader]
+    assert "Suggested moves" not in [header.value for header in at.subheader]
 
     monkeypatch.setattr(
         fetch,
@@ -2221,7 +2221,7 @@ def test_stat_features_recover_without_losing_selected_moves(monkeypatch):
     assert at.multiselect(key="team").value == team_before
     assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
     assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
-    assert "Suggested move loadouts" in [header.value for header in at.subheader]
+    assert "Suggested moves" in [header.value for header in at.subheader]
 
     stats_tab = app_tab(at, "Team builder")
     stat_tables = base_stat_tables(stats_tab)
@@ -2232,7 +2232,7 @@ def test_stat_features_recover_without_losing_selected_moves(monkeypatch):
     ]
     assert not any("Couldn't load base stats for:" in warning.value for warning in at.warning)
     assert not any(
-        "Suggested move loadouts are unavailable" in info.value
+        "Suggested moves are unavailable" in info.value
         for info in app_tab(at, "Swap suggestions").info
     )
 
@@ -2263,7 +2263,9 @@ def test_partial_team_blocks_swap_rankings_and_clears_preview(monkeypatch):
     assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
     assert len(at.tabs) == 3
 
-    best_swap = next(metric for metric in at.metric if metric.label == "Best swap")
+    best_swap = next(
+        metric for metric in at.metric if metric.label == "Top replacement score change"
+    )
     assert best_swap.value == "Unavailable"
 
     with pytest.raises(KeyError):
@@ -2387,7 +2389,9 @@ def test_partial_opponents_skip_matchup_ranking_only(monkeypatch):
         "gyarados",
     ]
 
-    best_swap = next(metric for metric in at.metric if metric.label == "Best swap")
+    best_swap = next(
+        metric for metric in at.metric if metric.label == "Top replacement score change"
+    )
     assert best_swap.value != "Unavailable"
 
     button_keys = [button.key for button in at.button if button.key]
@@ -2551,8 +2555,8 @@ def test_three_view_layout_places_controls_in_expected_views():
     assert any(expander.label == "Import / export / saved files" for expander in builder.expander)
     assert len(base_stat_tables(builder)) == 1
     assert suggestions.multiselect(key="available_pokemon")
-    assert "Suggested move loadouts" in [header.value for header in suggestions.subheader]
-    assert "Suggested move loadouts" not in [header.value for header in builder.subheader]
+    assert "Suggested moves" in [header.value for header in suggestions.subheader]
+    assert "Suggested moves" not in [header.value for header in builder.subheader]
     assert matchups.multiselect(key="opponent_team")
 
     for key in ("moves_garchomp", "moves_tyranitar"):
