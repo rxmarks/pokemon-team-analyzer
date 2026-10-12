@@ -2731,3 +2731,117 @@ def test_suggestion_cards_respect_member_locks():
         if button.key and button.key.startswith("swap_")
     )
     assert at.multiselect(key="locked_members").value == ["garchomp"]
+
+
+def test_opponent_overview_matches_the_grid():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+
+    assert not at.exception
+    matchups = app_tab(at, "Opponent matchups")
+    panels = [panel for panel in matchups.expander if panel.label == "See the full matchup grid"]
+    assert len(panels) == 1
+    grid = panels[0].dataframe[0].value
+    values = [element.value for element in matchups.markdown]
+    assert "#### Opponents at a glance" in values
+    assert "#### Ferrothorn" in values
+    for label in ("Favorable", "Even", "Risky"):
+        members = [
+            name.replace("-", " ").title()
+            for name in ("garchomp", "tyranitar")
+            if grid.loc[name, "ferrothorn"] == label
+        ]
+        listed = ", ".join(members) or "None"
+        assert f"- {label} type pressure: {listed}" in values
+
+
+def test_opponent_overview_excludes_unloaded_opponents(monkeypatch):
+    def lookup(name, cache):
+        if name == "gyarados":
+            raise requests.ConnectionError("offline")
+        return FAKE_TYPES[name]
+
+    monkeypatch.setattr(fetch, "types_cache_first", lookup)
+    st.cache_data.clear()
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="opponent_team").set_value(["dragonite", "gyarados"]).run()
+
+    assert not at.exception
+    matchups = app_tab(at, "Opponent matchups")
+    values = [element.value for element in matchups.markdown]
+    assert "#### Dragonite" in values
+    assert "#### Gyarados" not in values
+    assert any(
+        "Partial opponent analysis: 1 of 2 selected opponents loaded." in warning.value
+        for warning in matchups.warning
+    )
+    assert not any(
+        button.key and button.key.startswith("matchup_swap_") for button in matchups.button
+    )
+
+
+def test_matchup_cards_match_ranked_metrics():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+
+    assert not at.exception
+    matchups = app_tab(at, "Opponent matchups")
+    ranking = next(
+        panel
+        for panel in matchups.expander
+        if panel.label == "See all matchup-specific replacements"
+    )
+    ranked = ranking.dataframe[0].value
+    assert not ranked.empty
+    pressure_values = [
+        metric.value for metric in matchups.metric if metric.label == "Opponent threat pressure"
+    ]
+    balance_values = [
+        metric.value for metric in matchups.metric if metric.label == "Matchup balance"
+    ]
+    assert len(pressure_values) == min(5, len(ranked))
+    assert len(balance_values) == len(pressure_values)
+    headings = [element.value for element in matchups.markdown]
+    for index, row in enumerate(ranked.head(5).itertuples(index=False)):
+        before_pressure = int(row.threat_pressure + row.pressure_improvement)
+        before_balance = float(row.matchup_balance - row.balance_improvement)
+        assert pressure_values[index] == f"{before_pressure:g} → {row.threat_pressure:g}"
+        assert balance_values[index] == f"{before_balance:g} → {row.matchup_balance:g}"
+        outgoing = row.replaces.replace("-", " ").title()
+        incoming = row.candidate.replace("-", " ").title()
+        assert f"#### {outgoing} → {incoming}" in headings
+        assert matchups.button(key=f"matchup_swap_{index}")
+
+
+def test_matchup_cards_preview_preserves_opponent_context():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+    at.checkbox(key="matchup_improvements_only").uncheck().run()
+    before = list(at.multiselect(key="team").value)
+    at.button(key="matchup_swap_0").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="team").value == before
+    assert at.session_state["pending_swap_opponents"] == ("ferrothorn",)
+    at.button(key="cancel_swap_preview").click().run()
+    assert not at.exception
+    assert at.multiselect(key="team").value == before
+    assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
+    with pytest.raises(KeyError):
+        at.session_state["pending_swap_opponents"]
+
+
+def test_matchup_cards_keep_detailed_threat_report_available():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
+
+    assert not at.exception
+    matchups = app_tab(at, "Opponent matchups")
+    report = next(
+        panel for panel in matchups.expander if panel.label == "Detailed opponent threat report"
+    )
+    assert "#### Opponent threat report" in [element.value for element in report.markdown]
+    frame = report.dataframe[0].value
+    assert frame["opponent"].tolist() == ["ferrothorn"]
+    assert {"threatens", "answered_by", "threat_score"}.issubset(frame.columns)

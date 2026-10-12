@@ -1200,7 +1200,11 @@ with swap_suggestions:
 
 with opponent_matchups:
     st.subheader("Opponent Matchups")
-    st.caption("Compare your team's type-based pressure against up to six opposing Pokémon.")
+    st.caption(
+        "Choose the Pokémon you expect to face. "
+        "Explore your team's type advantages, weaknesses, and possible replacements."
+    )
+    st.caption("This comparison uses Pokémon types—not selected moves or predicted battle results.")
     st.caption(
         "Team-member locks apply here too. Manage them in Swap suggestions → Replacement options."
     )
@@ -1235,32 +1239,62 @@ with opponent_matchups:
         if not opponent_team:
             st.warning("Couldn't load any opposing Pokémon. Try again in a moment.")
         else:
-            opponent_cols = st.columns(MAX_TEAM_SIZE)
-
-            for col, (name, types) in zip(
-                opponent_cols,
-                opponent_team.items(),
-                strict=False,
-            ):
-                with col:
-                    sprite = cached_sprite(name)
-                    if sprite:
-                        st.image(sprite, width=72)
-
-                    st.markdown(f"**{display_name(name)}**")
-                    st.markdown(type_badges(types), unsafe_allow_html=True)
-
             with st.spinner("Calculating matchup analysis..."):
                 matchups = matchup_table(team, opponent_team, chart)
                 threat_rows = opponent_threat_report(team, opponent_team, chart)
+            st.markdown("#### Opponents at a glance")
+            st.caption(
+                "Compare each opponent with your analyzed team members. "
+                "Favorable, Even, and Risky describe relative type pressure—not predicted wins."
+            )
+            if not team_complete:
+                st.caption(
+                    f"Showing {len(team)} of {len(names)} selected team members. "
+                    "Members whose types could not be loaded are excluded."
+                )
 
-            st.markdown("#### Matchup grid")
-            st.dataframe(matchups, width="stretch")
+            overview_names = list(opponent_team)
+            overview_columns = min(3, len(overview_names)) or 1
+            for start in range(0, len(overview_names), overview_columns):
+                columns = st.columns(overview_columns)
+                row_names = overview_names[start : start + overview_columns]
+                for column, name in zip(columns, row_names, strict=False):
+                    with column:
+                        with st.container(border=True):
+                            portrait, identity = st.columns([1, 3])
+                            with portrait:
+                                sprite = cached_sprite(name)
+                                if sprite:
+                                    st.image(sprite, width=64)
+                            with identity:
+                                st.markdown(f"#### {display_name(name)}")
+                                st.markdown(
+                                    type_badges(opponent_team[name]), unsafe_allow_html=True
+                                )
+
+                            for label in ("Favorable", "Even", "Risky"):
+                                members = [
+                                    display_name(member)
+                                    for member in team
+                                    if matchups.loc[member, name] == label
+                                ]
+                                listed = ", ".join(members) or "None"
+                                st.markdown(f"- {label} type pressure: {listed}")
+
+            with st.expander("See the full matchup grid"):
+                st.markdown("#### Matchup grid")
+                st.caption(
+                    "Favorable: your member has stronger native-type pressure. "
+                    "Even: both have equal pressure. "
+                    "Risky: the opponent has stronger pressure. "
+                    "These labels do not predict a win or a safe switch-in."
+                )
+                st.dataframe(matchups, width="stretch")
 
             st.markdown("#### Matchup-specific swap suggestions")
             st.caption(
                 "Ranked by lower threat pressure, then higher matchup balance. "
-                "Overall team health breaks ties. Locked members cannot be replaced."
+                "Overall type balance breaks ties. Locked members cannot be replaced."
             )
 
             improvements_only = st.checkbox(
@@ -1308,59 +1342,64 @@ with opponent_matchups:
                     [cached_sprite(name) for name in shown_matchup_swaps[SWAP_IN]],
                 )
 
-                st.dataframe(
-                    shown_matchup_swaps,
-                    width="stretch",
-                    hide_index=True,
-                    column_config={
-                        "sprite": st.column_config.ImageColumn("", width="small"),
-                        SWAP_IN: st.column_config.TextColumn("Swap in"),
-                        SWAP_OUT: st.column_config.TextColumn("Swap out"),
-                        "is_improvement": st.column_config.CheckboxColumn(
-                            "Improves ranking",
-                            help="True when the proposed team ranks above your current team.",
-                        ),
-                        "threat_pressure": st.column_config.NumberColumn(
-                            "Threat pressure",
-                            help=(
-                                "Threatened members minus super-effective attackers. "
-                                "Lower is better."
+                with st.expander("See all matchup-specific replacements"):
+                    st.dataframe(
+                        shown_matchup_swaps,
+                        width="stretch",
+                        hide_index=True,
+                        column_config={
+                            "sprite": st.column_config.ImageColumn("", width="small"),
+                            SWAP_IN: st.column_config.TextColumn("Swap in"),
+                            SWAP_OUT: st.column_config.TextColumn("Swap out"),
+                            "is_improvement": st.column_config.CheckboxColumn(
+                                "Improves ranking",
+                                help="True when the proposed team ranks above your current team.",
                             ),
-                        ),
-                        "matchup_balance": st.column_config.NumberColumn(
-                            "Matchup balance",
-                            help=(
-                                "Total native-type pressure across both teams. Higher is better."
+                            "threat_pressure": st.column_config.NumberColumn(
+                                "Threat pressure",
+                                help=(
+                                    "Threatened members minus super-effective attackers. "
+                                    "Lower is better."
+                                ),
                             ),
-                        ),
-                        "new_badness": st.column_config.NumberColumn(
-                            "New badness",
-                            help="Overall team score after the swap. Lower is better.",
-                        ),
-                        "weak_total": st.column_config.NumberColumn(
-                            "Weakness total",
-                            help="Number of weak attack-type/member pairs after the swap.",
-                        ),
-                        "pressure_improvement": st.column_config.NumberColumn(
-                            "Pressure improvement",
-                            help="Current pressure minus proposed pressure. Positive is better.",
-                        ),
-                        "balance_improvement": st.column_config.NumberColumn(
-                            "Balance improvement",
-                            help="Proposed balance minus current balance. Positive is better.",
-                        ),
-                        "badness_improvement": st.column_config.NumberColumn(
-                            "Badness improvement",
-                            help="Current badness minus proposed badness. Positive is better.",
-                        ),
-                        "weakness_improvement": st.column_config.NumberColumn(
-                            "Weakness improvement",
-                            help=(
-                                "Current weakness count minus proposed count. Positive is better."
+                            "matchup_balance": st.column_config.NumberColumn(
+                                "Matchup balance",
+                                help=(
+                                    "Total native-type pressure across both teams. "
+                                    "Higher is better."
+                                ),
                             ),
-                        ),
-                    },
-                )
+                            "new_badness": st.column_config.NumberColumn(
+                                "New badness",
+                                help="Overall team score after the swap. Lower is better.",
+                            ),
+                            "weak_total": st.column_config.NumberColumn(
+                                "Weakness total",
+                                help="Number of weak attack-type/member pairs after the swap.",
+                            ),
+                            "pressure_improvement": st.column_config.NumberColumn(
+                                "Pressure improvement",
+                                help=(
+                                    "Current pressure minus proposed pressure. Positive is better."
+                                ),
+                            ),
+                            "balance_improvement": st.column_config.NumberColumn(
+                                "Balance improvement",
+                                help="Proposed balance minus current balance. Positive is better.",
+                            ),
+                            "badness_improvement": st.column_config.NumberColumn(
+                                "Badness improvement",
+                                help="Current badness minus proposed badness. Positive is better.",
+                            ),
+                            "weakness_improvement": st.column_config.NumberColumn(
+                                "Weakness improvement",
+                                help=(
+                                    "Current weakness count minus proposed count. "
+                                    "Positive is better."
+                                ),
+                            ),
+                        },
+                    )
 
                 st.caption(
                     "Positive improvement values are better; negative values show a downside. "
@@ -1368,6 +1407,86 @@ with opponent_matchups:
                 )
 
                 current_threats = threat_rows.set_index("opponent")
+
+                matchup_card_rows = list(matchup_swaps.head(SWAP_BUTTONS).itertuples(index=False))
+                card_columns = min(2, len(matchup_card_rows)) or 1
+                for start in range(0, len(matchup_card_rows), card_columns):
+                    columns = st.columns(card_columns)
+                    row_cards = matchup_card_rows[start : start + card_columns]
+                    for offset, (column, row) in enumerate(zip(columns, row_cards, strict=False)):
+                        index = start + offset
+                        with column:
+                            with st.container(border=True):
+                                out_name = row.replaces
+                                in_name = row.candidate
+                                swap_label = f"{display_name(out_name)} → {display_name(in_name)}"
+
+                                st.markdown(f"#### {swap_label}")
+                                outgoing, incoming = st.columns(2)
+                                with outgoing:
+                                    st.caption("Current member")
+                                    sprite = cached_sprite(out_name)
+                                    if sprite:
+                                        st.image(sprite, width=64)
+                                    st.markdown(f"**{display_name(out_name)}**")
+                                with incoming:
+                                    st.caption("Possible replacement")
+                                    sprite = cached_sprite(in_name)
+                                    if sprite:
+                                        st.image(sprite, width=64)
+                                    st.markdown(f"**{display_name(in_name)}**")
+
+                                if row.is_improvement:
+                                    st.write("Improves the matchup ranking.")
+                                else:
+                                    st.write(
+                                        "An alternative—not an improvement in the matchup ranking."
+                                    )
+
+                                current_pressure = int(
+                                    row.threat_pressure + row.pressure_improvement
+                                )
+                                current_balance = float(
+                                    row.matchup_balance - row.balance_improvement
+                                )
+                                pressure_col, balance_col = st.columns(2)
+                                with pressure_col:
+                                    st.metric(
+                                        "Opponent threat pressure",
+                                        f"{current_pressure:g} → {row.threat_pressure:g}",
+                                        help=(
+                                            "Weak-member pairings minus super-effective-attacker "
+                                            "pairings. Lower is better."
+                                        ),
+                                    )
+                                with balance_col:
+                                    st.metric(
+                                        "Matchup balance",
+                                        f"{current_balance:g} → {row.matchup_balance:g}",
+                                        help=(
+                                            "Relative native-type pressure across all pairings. "
+                                            "Higher is better."
+                                        ),
+                                    )
+
+                                current_type_score = int(row.new_badness + row.badness_improvement)
+                                current_weaknesses = int(row.weak_total + row.weakness_improvement)
+                                st.caption(
+                                    f"Overall type-balance score: {current_type_score:g} → "
+                                    f"{row.new_badness:g}. "
+                                    f"Weakness pairs: {current_weaknesses} → {row.weak_total}."
+                                )
+                                if row.badness_improvement < 0:
+                                    st.caption("Tradeoff: higher overall type-balance score.")
+                                if row.weakness_improvement < 0:
+                                    st.caption("Tradeoff: more type weaknesses across members.")
+
+                                st.button(
+                                    f"Preview replacement: {swap_label}",
+                                    key=f"matchup_swap_{index}",
+                                    on_click=stage_swap,
+                                    args=(out_name, in_name, tuple(opponent_names)),
+                                )
 
                 for index, row in enumerate(
                     matchup_swaps.head(SWAP_BUTTONS).itertuples(index=False)
@@ -1451,46 +1570,40 @@ with opponent_matchups:
                             "offense. It does not mean a safe switch-in or guaranteed win."
                         )
 
-                    st.button(
-                        f"Preview: {swap_label}",
-                        key=f"matchup_swap_{index}",
-                        on_click=stage_swap,
-                        args=(out_name, in_name, tuple(opponent_names)),
-                    )
-
-            st.markdown("#### Opponent threat report")
-            st.dataframe(
-                threat_rows,
-                width="stretch",
-                hide_index=True,
-                column_config={
-                    "opponent": st.column_config.TextColumn("Opponent"),
-                    "threatens": st.column_config.NumberColumn(
-                        "Members threatened",
-                        help=(
-                            "How many of your Pokémon are weak to at least one of "
-                            "this opponent's native types."
+            with st.expander("Detailed opponent threat report"):
+                st.markdown("#### Opponent threat report")
+                st.dataframe(
+                    threat_rows,
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "opponent": st.column_config.TextColumn("Opponent"),
+                        "threatens": st.column_config.NumberColumn(
+                            "Members threatened",
+                            help=(
+                                "How many of your Pokémon are weak to at least one of "
+                                "this opponent's native types."
+                            ),
                         ),
-                    ),
-                    "answered_by": st.column_config.NumberColumn(
-                        "Super-effective attackers",
-                        help=(
-                            "How many of your Pokémon can hit this opponent "
-                            "super-effectively using a native type. This does not "
-                            "mean they can safely switch in or win the matchup."
+                        "answered_by": st.column_config.NumberColumn(
+                            "Super-effective attackers",
+                            help=(
+                                "How many of your Pokémon can hit this opponent "
+                                "super-effectively using a native type. This does not "
+                                "mean they can safely switch in or win the matchup."
+                            ),
                         ),
-                    ),
-                    "threat_score": st.column_config.NumberColumn(
-                        "Threat score",
-                        help=(
-                            "Members threatened minus super-effective attackers. "
-                            "Higher values are more concerning."
+                        "threat_score": st.column_config.NumberColumn(
+                            "Threat score",
+                            help=(
+                                "Members threatened minus super-effective attackers. "
+                                "Higher values are more concerning."
+                            ),
                         ),
-                    ),
-                    "weak_members": st.column_config.TextColumn("Threatens"),
-                    "answers": st.column_config.TextColumn("Super-effective attackers"),
-                },
-            )
+                        "weak_members": st.column_config.TextColumn("Threatens"),
+                        "answers": st.column_config.TextColumn("Super-effective attackers"),
+                    },
+                )
 
             with st.expander("How to read these matchups"):
                 st.markdown(
