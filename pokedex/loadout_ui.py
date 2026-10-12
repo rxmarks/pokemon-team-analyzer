@@ -126,15 +126,6 @@ def render_loadout_suggestions(
         st.error("Couldn't load learnable moves from PokeAPI. Try again in a moment.")
         return {}
 
-    rows = [
-        {
-            "Pokémon": pretty(name),
-            "Moves": ", ".join(pretty(move) for move in moves) or "No eligible moves",
-        }
-        for name, moves in loadouts.items()
-    ]
-    st.dataframe(rows, width="stretch", hide_index=True)
-
     covered = loadout_coverage(loadouts, move_cache, chart)
     st.metric("Types hit super-effectively", f"{len(covered)}/{len(chart)}")
     st.caption(
@@ -142,20 +133,50 @@ def render_loadout_suggestions(
         "abilities, items, and Tera."
     )
 
-    for name, suggested_moves in loadouts.items():
-        selected_moves = list(st.session_state.get(f"moves_{name}", []))
+    st.caption(
+        "Compare your selected moves with these optional alternatives. "
+        "Previewing does not change your team. Applying replaces one member's moves."
+    )
+    entries = list(loadouts.items())
+    columns_per_row = min(2, len(entries)) or 1
 
-        st.button(
-            f"Preview suggested moves for {pretty(name)}",
-            key=f"preview_loadout_{name}",
-            on_click=preview_suggested_moves,
-            args=(name, list(suggested_moves)),
-            disabled=(not suggested_moves or suggested_moves == selected_moves),
-            help=(
-                "Review before replacing this member's selected moves. "
-                "Disabled when no moves are suggested or selections already match."
-            ),
-        )
+    for start in range(0, len(entries), columns_per_row):
+        columns = st.columns(columns_per_row)
+        row_entries = entries[start : start + columns_per_row]
+        for column, (name, suggested_moves) in zip(columns, row_entries, strict=False):
+            selected_moves = list(st.session_state.get(f"moves_{name}", []))
+            with column:
+                with st.container(border=True):
+                    st.markdown(f"#### {pretty(name)}")
+                    st.write("Your selected moves: " + _move_list(tuple(selected_moves)))
+                    if suggested_moves:
+                        st.write("Suggested moves: " + _move_list(tuple(suggested_moves)))
+                    else:
+                        st.write("No eligible moves were suggested for this member.")
+
+                    if suggested_moves and suggested_moves == selected_moves:
+                        st.caption("Your selected moves already match this suggestion.")
+                    elif suggested_moves:
+                        added = tuple(
+                            move for move in suggested_moves if move not in selected_moves
+                        )
+                        removed = tuple(
+                            move for move in selected_moves if move not in suggested_moves
+                        )
+                        st.write("Would add: " + _move_list(added))
+                        st.write("Would remove: " + _move_list(removed))
+
+                    st.button(
+                        f"Preview suggested moves for {pretty(name)}",
+                        key=f"preview_loadout_{name}",
+                        on_click=preview_suggested_moves,
+                        args=(name, list(suggested_moves)),
+                        disabled=(not suggested_moves or suggested_moves == selected_moves),
+                        help=(
+                            "Review before replacing this member's selected moves. "
+                            "Disabled when no moves are suggested or selections already match."
+                        ),
+                    )
 
     with st.expander("How loadouts are picked"):
         st.markdown(

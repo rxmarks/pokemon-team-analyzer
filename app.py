@@ -1084,6 +1084,10 @@ with swap_suggestions:
         f"Replacement pool: {eligible_replacement_count} eligible Pokémon "
         f"from {candidate_source.lower()}."
     )
+    st.caption(
+        "Explore one replacement at a time. Rankings use type matchups, "
+        "not predicted battle results. Lower type-balance scores are better."
+    )
     if not team_complete:
         st.info(PARTIAL_TEAM_SWAP_MESSAGE)
     elif all_members_locked:
@@ -1093,47 +1097,90 @@ with swap_suggestions:
     elif swaps.empty:
         st.info("No swap suggestions were produced for the selected replacements.")
     else:
-        shown = swaps.copy()
-        shown.insert(0, "sprite", [cached_sprite(name) for name in shown[SWAP_IN]])
+        current_score = team_badness(team, chart)
+        current_weakness_count = int(table["# weak"].sum())
+        recommendations = list(swaps.head(SWAP_BUTTONS).itertuples(index=False))
+        columns_per_row = min(2, len(recommendations)) or 1
 
-        st.dataframe(
-            shown,
-            width="stretch",
-            hide_index=True,
-            column_config={
-                "sprite": st.column_config.ImageColumn("", width="small"),
-                SWAP_IN: st.column_config.TextColumn("Swap in"),
-                SWAP_OUT: st.column_config.TextColumn("Swap out"),
-                "new_badness": st.column_config.NumberColumn(
-                    "New badness",
-                    help="Lower is better.",
-                ),
-                SWAP_GAIN: st.column_config.NumberColumn(
-                    "Improvement",
-                    help="Badness drop vs. current team. Negative values mean worse badness.",
-                ),
-                "weak_total": st.column_config.NumberColumn(
-                    "Weakness total",
-                    help="Number of weak attack-type/member pairs. Lower is better.",
-                ),
-            },
-        )
+        for start in range(0, len(recommendations), columns_per_row):
+            columns = st.columns(columns_per_row)
+            row_recommendations = recommendations[start : start + columns_per_row]
+            for offset, (column, row) in enumerate(zip(columns, row_recommendations, strict=False)):
+                index = start + offset
+                out_name = getattr(row, SWAP_OUT)
+                in_name = getattr(row, SWAP_IN)
+                gain = float(getattr(row, SWAP_GAIN))
+                proposed_score = float(row.new_badness)
+                proposed_weakness_count = int(row.weak_total)
 
-        st.markdown("**Try a swap**")
+                with column:
+                    with st.container(border=True):
+                        st.markdown(f"#### {display_name(out_name)} → {display_name(in_name)}")
+                        outgoing, incoming = st.columns(2)
+                        with outgoing:
+                            st.caption("Current member")
+                            sprite = cached_sprite(out_name)
+                            if sprite:
+                                st.image(sprite, width=64)
+                            st.markdown(f"**{display_name(out_name)}**")
+                        with incoming:
+                            st.caption("Possible replacement")
+                            sprite = cached_sprite(in_name)
+                            if sprite:
+                                st.image(sprite, width=64)
+                            st.markdown(f"**{display_name(in_name)}**")
 
-        for index, row in enumerate(swaps.head(SWAP_BUTTONS).itertuples(index=False)):
-            out_name = getattr(row, SWAP_OUT)
-            in_name = getattr(row, SWAP_IN)
-            gain = getattr(row, SWAP_GAIN)
+                        st.metric(
+                            "Type-balance score",
+                            f"{current_score:g} → {proposed_score:g}",
+                        )
+                        st.caption(
+                            f"Weakness pairs: {current_weakness_count} → {proposed_weakness_count}"
+                        )
+                        if gain > 0:
+                            st.write(f"Lower type-balance score by {gain:g}.")
+                        elif gain < 0:
+                            st.write(f"Tradeoff: higher type-balance score by {-gain:g}.")
+                        else:
+                            st.write("The type-balance score stays the same.")
 
-            st.button(
-                (
-                    f"Preview: {display_name(out_name)} → {display_name(in_name)} "
-                    f"({format_badness_change(float(gain))} badness change)"
-                ),
-                key=f"swap_{index}",
-                on_click=stage_swap,
-                args=(out_name, in_name),
+                        if proposed_weakness_count > current_weakness_count:
+                            st.caption("Tradeoff: more type weaknesses across team members.")
+                        elif proposed_weakness_count < current_weakness_count:
+                            st.caption("Fewer type weaknesses across team members.")
+
+                        st.button(
+                            f"Preview replacement: {display_name(out_name)} → "
+                            f"{display_name(in_name)}",
+                            key=f"swap_{index}",
+                            on_click=stage_swap,
+                            args=(out_name, in_name),
+                        )
+
+        with st.expander("See all ranked replacements"):
+            shown = swaps.copy()
+            shown.insert(0, "sprite", [cached_sprite(name) for name in shown[SWAP_IN]])
+            st.dataframe(
+                shown,
+                width="stretch",
+                hide_index=True,
+                column_config={
+                    "sprite": st.column_config.ImageColumn("", width="small"),
+                    SWAP_IN: st.column_config.TextColumn("Possible replacement"),
+                    SWAP_OUT: st.column_config.TextColumn("Current member"),
+                    "new_badness": st.column_config.NumberColumn(
+                        "Proposed type-balance score",
+                        help="Lower is better.",
+                    ),
+                    SWAP_GAIN: st.column_config.NumberColumn(
+                        "Score reduction",
+                        help="Current minus proposed score. Positive means a lower score.",
+                    ),
+                    "weak_total": st.column_config.NumberColumn(
+                        "Weakness pairs",
+                        help="Weak attack-type/member pairs. Lower is better.",
+                    ),
+                },
             )
 
         st.caption(
@@ -1143,11 +1190,12 @@ with swap_suggestions:
 
     with st.expander("How to read swap suggestions"):
         st.markdown(
-            "Each row proposes replacing an unlocked team member with a candidate. "
-            "'New badness' is the team's score after the swap; lower is better. "
-            "The table ranks eligible alternatives, which may include non-improvements. "
-            "Preview a suggestion, then apply or cancel it. Undo restores the team "
-            "before your most recent swap."
+            "Each option replaces one unlocked team member with a candidate. "
+            "The score counts type-based concerns; lower is better. "
+            "Ranked alternatives may have equal or higher scores, so review the tradeoffs. "
+            "A weakness pair is one member being weak to one attack type. "
+            "Preview a replacement, then apply or cancel it. "
+            "Undo restores the complete build before your most recent Pokémon replacement."
         )
 
 with opponent_matchups:
