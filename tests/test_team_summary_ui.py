@@ -52,8 +52,28 @@ render_team_summary(
     ).run()
 
     assert not at.exception
-    assert any("plus 1 other attack type" in element.value for element in at.markdown)
-    assert any("plus 1 other member/type pair" in element.value for element in at.markdown)
+
+    captions = [caption.value for caption in at.caption]
+    assert "Plus 1 more attack types. See Defensive coverage below." in captions
+    assert "Plus 1 more matchups. See Defensive coverage below." in captions
+
+    markdown_values = [element.value for element in at.markdown]
+
+    shared_findings = [
+        value for value in markdown_values if value.startswith("- ") and "members:" in value
+    ]
+    assert shared_findings == [
+        "- Fairy (2 members: Garchomp, Tyranitar)",
+        "- Ground (2 members: Garchomp, Tyranitar)",
+        "- Ice (2 members: Garchomp, Tyranitar)",
+    ]
+
+    quad_findings = [value for value in markdown_values if value.startswith("- Garchomp to ")]
+    assert quad_findings == [
+        "- Garchomp to Ice",
+        "- Garchomp to Fire",
+        "- Garchomp to Water",
+    ]
 
 
 def test_summary_avoids_overall_rating_for_clean_checks():
