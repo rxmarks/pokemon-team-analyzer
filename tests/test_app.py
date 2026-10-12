@@ -2662,3 +2662,72 @@ def test_member_stat_bars_handle_missing_stats(monkeypatch, captured_stat_bars, 
         )
         assert any(f"Stats couldn't be loaded for {label}." in info.value for info in panel.info)
         assert builder.multiselect(key=f"moves_{name}")
+
+
+def test_suggestion_cards_match_ranked_replacements():
+    at = run_app_with_team("garchomp,tyranitar")
+
+    assert not at.exception
+    suggestions = app_tab(at, "Swap suggestions")
+    ranking_panel = next(
+        panel for panel in suggestions.expander if panel.label == "See all ranked replacements"
+    )
+    ranked = next(
+        element.value
+        for element in ranking_panel.dataframe
+        if {"candidate", "replaces", "new_badness", "improvement"}.issubset(element.value.columns)
+    )
+    assert not ranked.empty
+    buttons = [
+        button for button in suggestions.button if button.key and button.key.startswith("swap_")
+    ]
+    assert len(buttons) == min(5, len(ranked))
+    headings = [element.value for element in suggestions.markdown]
+    scores = [metric.value for metric in suggestions.metric if metric.label == "Type-balance score"]
+    for index, row in enumerate(ranked.head(5).itertuples(index=False)):
+        outgoing = row.replaces.replace("-", " ").title()
+        incoming = row.candidate.replace("-", " ").title()
+        assert f"#### {outgoing} → {incoming}" in headings
+        assert suggestions.button(key=f"swap_{index}")
+        current = row.new_badness + row.improvement
+        assert scores[index] == f"{current:g} → {row.new_badness:g}"
+    assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
+
+
+def test_suggestion_cards_show_move_changes_before_applying(fixed_loadouts):
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+
+    assert not at.exception
+    suggestions = app_tab(at, "Swap suggestions")
+    values = [element.value for element in suggestions.markdown]
+    assert "Your selected moves: Earthquake" in values
+    assert "Suggested moves: Earthquake, Ice Beam" in values
+    assert "Would add: Ice Beam" in values
+    assert "Would remove: None" in values
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert suggestions.button(key="preview_loadout_garchomp")
+    assert not any(
+        {"Pokémon", "Moves"}.issubset(element.value.columns) for element in suggestions.dataframe
+    )
+
+
+def test_suggestion_cards_respect_member_locks():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+
+    assert not at.exception
+    suggestions = app_tab(at, "Swap suggestions")
+    tables = [
+        element.value
+        for element in suggestions.dataframe
+        if {"candidate", "replaces", "improvement"}.issubset(element.value.columns)
+    ]
+    assert tables and not tables[0].empty
+    assert "garchomp" not in set(tables[0]["replaces"])
+    assert all(
+        "Garchomp →" not in button.label
+        for button in suggestions.button
+        if button.key and button.key.startswith("swap_")
+    )
+    assert at.multiselect(key="locked_members").value == ["garchomp"]
