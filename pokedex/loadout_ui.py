@@ -75,10 +75,10 @@ def render_loadout_preview() -> None:
     st.write("Removed: " + _move_list(removed))
     st.write("Added: " + _move_list(added))
     st.caption(
-        "Applying replaces this Pokémon's selected moves only. "
-        "Suggestions optimize coverage; they are not legality checks. "
-        "Species-swap undo still restores the complete pre-swap build, "
-        "including its older move selections."
+        "Applying replaces only this Pokémon's selected moves. "
+        "Suggestions focus on type coverage and do not verify your battle format's rules. "
+        "Undoing a Pokémon replacement restores the complete build from before that "
+        "replacement, including its earlier move selections."
     )
 
     apply_col, cancel_col = st.columns(2)
@@ -105,14 +105,14 @@ def render_loadout_suggestions(
     team_stats: dict[str, dict[str, int]],
 ) -> dict[str, list[str]]:
     """Render suggested moves and explicit per-member preview controls."""
-    st.subheader("Suggested move loadouts")
+    st.subheader("Suggested moves")
     render_loadout_preview()
 
     if notice := st.session_state.get("loadout_notice"):
         st.info(notice)
 
     try:
-        with st.spinner("Building move loadouts..."):
+        with st.spinner("Finding suggested moves..."):
             learnsets = {name: cached_learnable_moves(name) for name in team}
             move_cache: MoveCache = cached_move_cache()
             loadouts = suggest_loadouts(
@@ -178,12 +178,14 @@ def render_loadout_suggestions(
                         ),
                     )
 
-    with st.expander("How loadouts are picked"):
+    with st.expander("How suggested moves are picked"):
         st.markdown(
-            "Each Pokémon gets its strongest STAB move first. Remaining slots go to "
-            "moves that hit new types super-effectively, then to power and the "
-            "Pokémon's better attacking stat. Weak (<60 power), status, and "
-            "drawback moves like Hyper Beam are skipped."
+            "Each Pokémon starts with its strongest eligible damaging move "
+            "that matches one of its own types. Remaining slots prioritize "
+            "covering additional types, then base power and the Pokémon's "
+            "stronger attacking stat. Moves with base power below 60, status moves, "
+            "and selected drawback moves such as Hyper Beam are excluded. "
+            "These are coverage suggestions, not complete competitive sets."
         )
 
     return loadouts
