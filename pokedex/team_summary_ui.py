@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from pokedex.display import display_name
+from pokedex.display import display_name, type_badges
 from pokedex.team_summary import TeamSummary
 
 MAX_SUMMARY_ITEMS = 3
@@ -14,11 +14,12 @@ def render_team_summary(
     selected_count: int,
     analyzed_count: int,
 ) -> None:
-    """Show a compact, explicitly type-based review checklist."""
-    st.markdown("### What to review")
+    """Show type-based findings before optional detailed tables."""
+    st.markdown("### At a glance")
     st.caption(
-        "Type-based checks only—not a battle simulation or an overall team rating. "
-        "Selected moves are analyzed separately in the Team builder tab."
+        "A starting point for exploring your team—"
+        "not a battle simulation or an overall team rating. "
+        "These findings use Pokémon types; selected moves are checked separately."
     )
 
     if analyzed_count < selected_count:
@@ -28,62 +29,68 @@ def render_team_summary(
             "These findings exclude members whose data could not be loaded."
         )
 
-    if summary.shared_weaknesses:
-        details = "; ".join(
-            (
-                f"{weakness.attack_type.title()} "
-                f"({len(weakness.members)} members: "
-                f"{', '.join(display_name(name) for name in weakness.members)})"
-            )
-            for weakness in summary.shared_weaknesses[:MAX_SUMMARY_ITEMS]
-        )
-        remaining = len(summary.shared_weaknesses) - MAX_SUMMARY_ITEMS
-        extra = ""
-        if remaining > 0:
-            noun = "attack type" if remaining == 1 else "attack types"
-            extra = f"; plus {remaining} other {noun}"
-        st.markdown(
-            f"- Shared weaknesses: {details}{extra}. "
-            "Review Defensive coverage in Team builder before considering replacements."
-        )
-    else:
-        st.markdown(
-            "- Shared weaknesses: no attack type hits two or more "
-            "analyzed members super-effectively."
-        )
+    shared, big, coverage = st.columns(3)
 
-    if summary.quad_weaknesses:
-        details = "; ".join(
-            (f"{display_name(weakness.species)} to {weakness.attack_type.title()}")
-            for weakness in summary.quad_weaknesses[:MAX_SUMMARY_ITEMS]
-        )
-        remaining = len(summary.quad_weaknesses) - MAX_SUMMARY_ITEMS
-        extra = ""
-        if remaining > 0:
-            noun = "member/type pair" if remaining == 1 else "member/type pairs"
-            extra = f"; plus {remaining} other {noun}"
+    with shared:
+        with st.container(border=True):
+            st.markdown("#### Shared weaknesses")
+            st.caption("Attack types that hit more than one member super-effectively.")
+            if summary.shared_weaknesses:
+                shown = summary.shared_weaknesses[:MAX_SUMMARY_ITEMS]
+                st.markdown(
+                    type_badges([weakness.attack_type for weakness in shown]),
+                    unsafe_allow_html=True,
+                )
+                for weakness in shown:
+                    members = ", ".join(display_name(name) for name in weakness.members)
+                    st.markdown(
+                        f"- {weakness.attack_type.title()} "
+                        f"({len(weakness.members)} members: {members})"
+                    )
+                remaining = len(summary.shared_weaknesses) - len(shown)
+                if remaining:
+                    st.caption(f"Plus {remaining} more attack types. See Defensive coverage below.")
+            else:
+                st.markdown("No shared type weaknesses among the analyzed members.")
 
-        st.markdown(
-            f"- 4× weaknesses: {details}{extra}. See Defense for the complete multiplier table."
-        )
-    else:
-        st.markdown("- 4× weaknesses: none among the analyzed members.")
+    with big:
+        with st.container(border=True):
+            st.markdown("#### Big weaknesses · 4×")
+            st.caption("Type matchups that deal four times normal damage, before other effects.")
+            if summary.quad_weaknesses:
+                shown_quad = summary.quad_weaknesses[:MAX_SUMMARY_ITEMS]
+                st.markdown(
+                    type_badges(list(dict.fromkeys(w.attack_type for w in shown_quad))),
+                    unsafe_allow_html=True,
+                )
+                for quad_weakness in shown_quad:
+                    st.markdown(
+                        f"- {display_name(quad_weakness.species)} "
+                        f"to {quad_weakness.attack_type.title()}"
+                    )
+                remaining = len(summary.quad_weaknesses) - len(shown_quad)
+                if remaining:
+                    st.caption(f"Plus {remaining} more matchups. See Defensive coverage below.")
+            else:
+                st.markdown("No 4× type weaknesses among the analyzed members.")
 
-    if summary.native_coverage_gaps:
-        gaps = ", ".join(attack_type.title() for attack_type in summary.native_coverage_gaps)
-        st.markdown(
-            f"- Native-type coverage gaps: {gaps}. "
-            "Check selected moves in Team builder before deciding "
-            "a replacement is needed."
-        )
-    else:
-        st.markdown(
-            "- Native-type coverage gaps: none. "
-            "This does not verify which moves your Pokémon actually have."
-        )
+    with coverage:
+        with st.container(border=True):
+            st.markdown("#### Types to cover")
+            st.caption("Types your Pokémon’s own attack types cannot hit super-effectively.")
+            if summary.native_coverage_gaps:
+                st.markdown(type_badges(list(summary.native_coverage_gaps)), unsafe_allow_html=True)
+                st.markdown(
+                    "Selected moves may fill these gaps. Check Coverage from selected moves "
+                    "before considering a replacement."
+                )
+            else:
+                st.markdown(
+                    "Your Pokémon’s types cover every single type super-effectively. "
+                    "This does not verify which moves they actually have."
+                )
 
     st.caption(
-        "Swap suggestions are optional alternatives within your replacement pool. "
-        "Preview their tradeoffs; a lower type-based score does not guarantee "
-        "better battle performance."
+        "You do not need to fix every finding. Explore optional changes in Swap suggestions "
+        "and preview their tradeoffs before applying them."
     )

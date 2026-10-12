@@ -132,7 +132,9 @@ def cached_sprite(name: str) -> str | None:
 
 
 st.title("Pokémon Team Analyzer")
-st.caption("Type-coverage analysis and swap suggestions. Data from PokeAPI.")
+st.caption(
+    "Build a Pokémon team, explore its strengths and weaknesses, and compare possible changes."
+)
 
 with st.sidebar:
     st.header("About")
@@ -523,8 +525,9 @@ team_builder, swap_suggestions, opponent_matchups = st.tabs(
 with team_builder:
     st.subheader("Build your team")
     st.caption(
-        "Choose your Pokémon below, or import a team from Showdown or a saved file. "
-        "Use Swap suggestions to review move loadouts and limit Pokémon replacements."
+        "Choose up to six Pokémon to start. Moves are optional: "
+        "add them for a more detailed coverage check. "
+        "You can also import a team from a saved file or Showdown."
     )
 
     names = st.multiselect(
@@ -941,75 +944,11 @@ else:
     )
 
 with team_builder:
-    render_move_coverage(team, chart, sprite_lookup=cached_sprite)
-
-    st.subheader("Base stats")
-    if team_stats:
-        st.dataframe(pd.DataFrame(team_stats).T, width="stretch")
-
-    if not team_stats_complete:
-        if team_stats:
-            st.warning(
-                f"Partial base-stat table: {len(team_stats)} of "
-                f"{len(team)} analyzed members loaded. "
-                "Team-wide speed and attacker-role checks are unavailable."
-            )
-        else:
-            st.info(
-                "Base stats are unavailable for all analyzed members. "
-                "Team-wide speed and attacker-role checks are unavailable."
-            )
-    else:
-        warnings = stat_warnings(team_stats)
-        if warnings:
-            for warning in warnings:
-                st.warning(warning)
-        else:
-            st.success("Team has speed, physical, and special attackers covered.")
-
-    with st.expander("How to read the stat check"):
-        st.markdown(
-            "Rows are your Pokémon and columns are base stats. Warnings flag a "
-            "team that lacks fast members, or leans entirely physical or special."
-        )
-
-    st.markdown("### Team overview")
-    if not team_complete:
-        st.caption(
-            f"Partial type analysis: {len(team)} of {len(names)} "
-            "selected members loaded. The metrics below cover loaded members only."
-        )
-
-    m1, m2, m3, m4, m5 = st.columns(5)
-
-    m1.metric(
-        "Team badness",
-        team_badness(team, chart),
-        help="Problem types + coverage gaps. Lower is better.",
-    )
-    m2.metric(
-        "Shared weaknesses",
-        shared_weak,
-        help="Attack types that hit 2+ members super-effectively.",
-    )
-    m3.metric(
-        "Coverage gaps",
-        len(gaps),
-        help="Types no member's type hits super-effectively.",
-    )
-    m4.metric(
-        "4x weaknesses",
-        quad_weak,
-        help="Member/type pairs taking quadruple damage.",
-    )
-    m5.metric(
-        "Best swap",
-        best_swap,
-        help=(
-            "Change in team badness for the top-ranked eligible single swap. "
-            "Negative means lower badness; positive means higher badness; "
-            "zero means unchanged badness."
-        ),
+    render_move_coverage(
+        team,
+        chart,
+        sprite_lookup=cached_sprite,
+        team_stats=team_stats,
     )
 
     summary = summarize_team(team, table, gaps)
@@ -1019,6 +958,80 @@ with team_builder:
         selected_count=len(names),
         analyzed_count=len(team),
     )
+
+    with st.expander("Type-balance details"):
+        m1, m2, m3, m4, m5 = st.columns(5)
+
+        m1.metric(
+            "Type-balance score",
+            team_badness(team, chart),
+            help="Counts type-based concerns and coverage gaps. Lower is better.",
+        )
+        m2.metric(
+            "Shared weaknesses",
+            shared_weak,
+            help="Attack types that hit 2+ members super-effectively.",
+        )
+        m3.metric(
+            "Types to cover",
+            len(gaps),
+            help="Types no member's type hits super-effectively.",
+        )
+        m4.metric(
+            "4× weaknesses",
+            quad_weak,
+            help="Member/type pairs taking quadruple damage.",
+        )
+        m5.metric(
+            "Best swap",
+            best_swap,
+            help=(
+                "Change in team badness for the top-ranked eligible single swap. "
+                "Negative means lower badness; positive means higher badness; "
+                "zero means unchanged badness."
+            ),
+        )
+        st.caption(
+            "Lower is better. This score counts type-based concerns; "
+            "it is not a rating of battle performance."
+        )
+
+    with st.expander("Team roles"):
+        st.caption(
+            "These checks look for fast members and physical or special attackers. "
+            "They use base stats, not training, items, abilities, or selected moves."
+        )
+
+        if not team_stats_complete:
+            if team_stats:
+                st.warning(
+                    f"Partial base-stat table: {len(team_stats)} of "
+                    f"{len(team)} analyzed members loaded. "
+                    "Team-wide speed and attacker-role checks are unavailable."
+                )
+            else:
+                st.info(
+                    "Base stats are unavailable for all analyzed members. "
+                    "Team-wide speed and attacker-role checks are unavailable."
+                )
+        else:
+            warnings = stat_warnings(team_stats)
+            if warnings:
+                for warning in warnings:
+                    st.warning(warning)
+            else:
+                st.success("Team has speed, physical, and special attackers covered.")
+
+    with st.expander("Compare all base stats"):
+        st.caption(
+            "An optional side-by-side reference. "
+            "You can also inspect base stats inside each Pokémon's card."
+        )
+
+        if team_stats:
+            st.dataframe(pd.DataFrame(team_stats).T, width="stretch")
+        else:
+            st.info("No base stats are available to compare.")
 
     st.markdown("### Coverage details")
     with st.expander("Defensive coverage"):
@@ -1040,7 +1053,7 @@ with team_builder:
                 "resists, 0 means immune. 'total' sums the row across your team."
             )
 
-    with st.expander("Native-type offensive coverage"):
+    with st.expander("Coverage from your Pokémon’s types"):
         if gaps:
             st.warning("No super-effective coverage against these types:")
             st.markdown(type_badges(sorted(gaps)), unsafe_allow_html=True)
