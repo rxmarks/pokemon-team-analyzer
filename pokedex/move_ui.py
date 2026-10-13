@@ -146,6 +146,16 @@ def render_member_stats(name: str, stats: Mapping[str, int] | None) -> None:
             )
 
 
+def select_team_member(name: str) -> None:
+    """Select an editor without changing the team build or pending previews."""
+    st.session_state["active_team_member"] = name
+
+
+def close_team_member_editor() -> None:
+    """Hide the editor without changing the team build."""
+    st.session_state["active_team_member"] = None
+
+
 def render_move_coverage(
     team: Team,
     type_chart: TypeChart,
@@ -153,27 +163,20 @@ def render_move_coverage(
     sprite_lookup: Callable[[str], str | None] | None = None,
     team_stats: Mapping[str, Mapping[str, int]] | None = None,
 ) -> None:
-    """Render member cards, then team-wide selected-move coverage."""
+    """Render a compact roster, one editor, and team-wide move coverage."""
     st.subheader("Team")
-    st.caption(
-        "Add up to four moves per member, or leave them empty for now. "
-        "Your Pokémon’s types are analyzed either way."
-    )
 
-    with st.expander("How move selection and coverage work"):
-        st.markdown(
-            "- Status moves are preserved but do not contribute to offensive coverage.\n"
-            "- Available learnsets are not battle-format legality checks.\n"
-            "- Move details use cached metadata; base power is not calculated damage.\n"
-            "- Missing power does not necessarily mean coverage data is unavailable.\n"
-            "- Coverage describes this app's type calculation, not a guaranteed matchup."
-        )
-
-    move_cache = cached_move_cache()
-    team_moves: dict[str, list[str]] = {}
     names = list(team)
-    columns_per_row = min(3, len(names)) or 1
-    locks = set(st.session_state.get("locked_members", []))
+    if not names:
+        return
+
+    state = st.session_state
+    if state.get("active_team_member") not in names:
+        state["active_team_member"] = None
+
+    active_name = state.get("active_team_member")
+    locks = set(state.get("locked_members", []))
+    columns_per_row = min(3, len(names))
 
     for start in range(0, len(names), columns_per_row):
         columns = st.columns(columns_per_row)
@@ -188,12 +191,64 @@ def render_move_coverage(
                             sprite = sprite_lookup(name)
                             if sprite:
                                 st.image(sprite, width=64)
+
                     with identity:
                         st.markdown(f"**{display_name(name)}**")
-                        st.markdown(type_badges(team[name]), unsafe_allow_html=True)
-                        st.caption("Kept on team" if name in locks else "Available for replacement")
-                    render_member_stats(name, (team_stats or {}).get(name))
-                    team_moves[name] = render_member_move_editor(name, move_cache)
+                        st.markdown(
+                            type_badges(team[name]),
+                            unsafe_allow_html=True,
+                        )
+                        move_count = len(state.get(f"moves_{name}", []))
+                        status = f"{move_count}/{MAX_MOVES} moves"
+                        if name in locks:
+                            status += " · Kept on team"
+                        st.caption(status)
+
+                    selected = name == active_name
+                    st.button(
+                        "Editing" if selected else "Edit",
+                        key=f"edit_member_{name}",
+                        on_click=select_team_member,
+                        args=(name,),
+                        type="primary" if selected else "secondary",
+                        disabled=selected,
+                        width="stretch",
+                    )
+
+    move_cache = cached_move_cache()
+
+    if isinstance(active_name, str):
+        with st.container(border=True):
+            heading, action = st.columns([4, 1])
+            with heading:
+                st.markdown(f"### Edit {display_name(active_name)}")
+            with action:
+                st.button(
+                    "Done",
+                    key="close_member_editor",
+                    on_click=close_team_member_editor,
+                    width="stretch",
+                )
+
+            st.caption("Moves are optional. Choose up to four.")
+
+            render_member_move_editor(active_name, move_cache)
+            render_member_stats(
+                active_name,
+                (team_stats or {}).get(active_name),
+            )
+
+            with st.expander("About moves"):
+                st.markdown(
+                    "Damaging moves are used to check type coverage. "
+                    "Other moves stay in your saved team but are not counted. "
+                    "Available moves are not checked against a specific game's "
+                    "or battle format's rules."
+                )
+
+    team_moves: dict[str, list[str]] = {
+        name: list(state.get(f"moves_{name}", [])) for name in names
+    }
 
     with st.expander("Coverage from selected moves"):
         unknown_moves = sorted(

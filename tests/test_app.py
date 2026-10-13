@@ -79,6 +79,17 @@ def run_app_with_team(team: str):
     return at.run()
 
 
+def open_member_editor(at: AppTest, name: str) -> AppTest:
+    """Open a member's editor through the roster control."""
+    if at.session_state["active_team_member"] != name:
+        at.button(key=f"edit_member_{name}").click().run()
+
+    assert not at.exception
+    assert at.session_state["active_team_member"] == name
+    assert at.multiselect(key=f"moves_{name}")
+    return at
+
+
 def app_tab(at, label):
     matches = [tab for tab in at.tabs if tab.label == label]
     assert len(matches) == 1, f"Expected exactly one tab named {label!r}"
@@ -519,12 +530,17 @@ def test_manual_team_edit_clears_preview():
 
 def test_showdown_import_preserves_selected_moves():
     at = run_app()
-
     at.text_area(key="showdown_paste").input(PASTE)
     at.button(key="import_btn").click().run()
 
     assert not at.exception
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
+    assert at.session_state["moves_tyranitar"] == ["crunch"]
+
+    open_member_editor(at, "garchomp")
     assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+
+    open_member_editor(at, "tyranitar")
     assert at.multiselect(key="moves_tyranitar").value == ["crunch"]
     assert any("Crunch" in warning.value and "preserved" in warning.value for warning in at.warning)
 
@@ -545,6 +561,7 @@ def test_status_moves_can_be_selected(monkeypatch):
     )
 
     at = run_app_with_team("garchomp")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["swords-dance"]).run()
 
     assert not at.exception
@@ -560,6 +577,7 @@ def test_status_moves_can_be_selected(monkeypatch):
 
 def test_move_lookup_failure_preserves_selection(monkeypatch):
     at = run_app_with_team("garchomp")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
 
     def unavailable(name):
@@ -575,12 +593,17 @@ def test_move_lookup_failure_preserves_selection(monkeypatch):
 
 def test_removed_member_moves_do_not_return_when_readded():
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
 
     at.multiselect(key="team").set_value(["tyranitar"]).run()
+
     assert not at.exception
+    with pytest.raises(KeyError):
+        at.session_state["moves_garchomp"]
 
     at.multiselect(key="team").set_value(["tyranitar", "garchomp"]).run()
+    open_member_editor(at, "garchomp")
 
     assert not at.exception
     assert at.multiselect(key="moves_garchomp").value == []
@@ -589,28 +612,34 @@ def test_removed_member_moves_do_not_return_when_readded():
 def test_swap_and_undo_preserve_supported_build_state():
     at = run_app_with_team("garchomp,tyranitar")
 
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+
+    open_member_editor(at, "tyranitar")
     at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
+
     at.multiselect(key="locked_members").set_value(["garchomp"]).run()
-
     at = apply_first_matchup_swap(at)
+
     assert not at.exception
-
     current_team = at.multiselect(key="team").value
-    incoming = next(name for name in current_team if name not in {"garchomp", "tyranitar"})
+    incoming = next(name for name in current_team if name not in ["garchomp", "tyranitar"])
 
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
-    assert at.multiselect(key=f"moves_{incoming}").value == []
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
+    assert at.session_state[f"moves_{incoming}"] == []
     assert at.multiselect(key="locked_members").value == ["garchomp"]
 
     at.button(key="undo_swap").click().run()
 
     assert not at.exception
     assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
-    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
+    assert at.session_state["moves_tyranitar"] == ["ice-beam"]
     assert at.multiselect(key="locked_members").value == ["garchomp"]
     assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
+
+    open_member_editor(at, "tyranitar")
+    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
 
 
 def mock_team_upload(monkeypatch, contents: str | bytes):
@@ -644,6 +673,7 @@ def test_json_load_restores_build_order_url_and_preserves_opponents(monkeypatch)
     mock_team_upload(monkeypatch, dump_team(saved_build()))
     at = run_app_with_team("dragonite")
 
+    open_member_editor(at, "dragonite")
     at.multiselect(key="moves_dragonite").set_value(["ice-beam"]).run()
     at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
 
@@ -651,28 +681,39 @@ def test_json_load_restores_build_order_url_and_preserves_opponents(monkeypatch)
 
     assert not at.exception
     assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
-    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
+    assert at.session_state["moves_tyranitar"] == ["ice-beam"]
     assert at.multiselect(key="locked_members").value == ["garchomp"]
     assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
 
     url_team = at.query_params["team"]
     assert url_team in ("garchomp,tyranitar", ["garchomp,tyranitar"])
 
+    with pytest.raises(KeyError):
+        at.session_state["moves_dragonite"]
+
+    open_member_editor(at, "garchomp")
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+
     at.multiselect(key="team").set_value(["garchomp", "tyranitar", "dragonite"]).run()
+    open_member_editor(at, "dragonite")
 
     assert not at.exception
     assert at.multiselect(key="moves_dragonite").value == []
 
 
 @pytest.mark.parametrize(
-    ("contents", "message"),
+    "contents, message",
     [
         ("{", "valid JSON"),
-        ('{"schema_version": 2, "team": []}', "schema version"),
+        (
+            '{"schema_version": 2, "team": []}',
+            "schema version",
+        ),
         (
             '{"schema_version": 1, "team": ['
-            '{"species": "missingno", "moves": [], "locked": false}]}',
+            '{"species": "missingno", "moves": [], "locked": false}'
+            "]}",
             "unrecognized species",
         ),
     ],
@@ -683,8 +724,10 @@ def test_failed_json_load_preserves_build_url_undo_and_preview(
     contents,
     message,
 ):
+
     mock_team_upload(monkeypatch, contents)
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
     at.multiselect(key="locked_members").set_value(["garchomp"]).run()
 
@@ -703,7 +746,7 @@ def test_failed_json_load_preserves_build_url_undo_and_preview(
 
     assert not at.exception
     assert at.multiselect(key="team").value == before_team
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
     assert at.multiselect(key="locked_members").value == ["garchomp"]
     assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
     assert at.query_params["team"] == before_url
@@ -739,6 +782,7 @@ def test_successful_json_load_clears_undo_and_preview(monkeypatch):
 def test_json_load_accepts_empty_team_and_removes_url(monkeypatch):
     mock_team_upload(monkeypatch, dump_team(TeamState()))
     at = run_app_with_team("garchomp")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
     at.multiselect(key="locked_members").set_value(["garchomp"]).run()
 
@@ -753,6 +797,7 @@ def test_json_load_accepts_empty_team_and_removes_url(monkeypatch):
     at.multiselect(key="team").set_value(["garchomp"]).run()
 
     assert not at.exception
+    open_member_editor(at, "garchomp")
     assert at.multiselect(key="moves_garchomp").value == []
 
 
@@ -775,7 +820,9 @@ def test_json_download_contains_current_supported_build(monkeypatch):
     monkeypatch.setattr(st, "download_button", capture_download)
 
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    open_member_editor(at, "tyranitar")
     at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
     at.multiselect(key="locked_members").set_value(["garchomp"]).run()
 
@@ -841,6 +888,7 @@ def test_pool_without_replacements_keeps_team_analysis_available(pool):
 
 def test_available_pool_preserves_build_locks_and_opponents():
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
     at.multiselect(key="locked_members").set_value(["garchomp"]).run()
     at.multiselect(key="opponent_team").set_value(["ferrothorn"]).run()
@@ -850,7 +898,7 @@ def test_available_pool_preserves_build_locks_and_opponents():
 
     assert not at.exception
     assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
     assert at.multiselect(key="locked_members").value == ["garchomp"]
     assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
     assert at.query_params["team"] == before_url
@@ -1168,7 +1216,7 @@ def test_bulk_pool_replace_accepts_showdown_roster():
         "ferrothorn",
     ]
     assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
-    assert at.multiselect(key="moves_garchomp").value == []
+    assert at.session_state["moves_garchomp"] == []
 
 
 @pytest.mark.parametrize(
@@ -1205,6 +1253,7 @@ def test_invalid_bulk_input_disables_actions_and_preserves_state(contents):
 @pytest.mark.parametrize("button_key", ["pool_add", "pool_replace"])
 def test_bulk_pool_apply_preserves_build_and_undo_but_clears_preview(button_key):
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
     at.multiselect(key="locked_members").set_value(["garchomp"]).run()
     at = apply_first_matchup_swap(at)
@@ -1221,7 +1270,7 @@ def test_bulk_pool_apply_preserves_build_and_undo_but_clears_preview(button_key)
 
     assert not at.exception
     assert at.multiselect(key="team").value == before_team
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
     assert at.multiselect(key="locked_members").value == ["garchomp"]
     assert at.multiselect(key="opponent_team").value == ["ferrothorn"]
     assert at.query_params["team"] == before_url
@@ -1258,8 +1307,8 @@ def test_workspace_load_restores_all_settings_and_clears_history(monkeypatch):
 
     assert not at.exception
     assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
-    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
+    assert at.session_state["moves_tyranitar"] == ["ice-beam"]
     assert at.multiselect(key="locked_members").value == ["garchomp"]
     assert at.multiselect(key="available_pokemon").value == [
         "togekiss",
@@ -1301,6 +1350,7 @@ def test_failed_workspace_load_preserves_existing_state(monkeypatch, problem):
     mock_team_upload(monkeypatch, contents)
 
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
     at.multiselect(key="locked_members").set_value(["garchomp"]).run()
     at = select_available_pool(at, ["dragonite", "togekiss"])
@@ -1317,7 +1367,7 @@ def test_failed_workspace_load_preserves_existing_state(monkeypatch, problem):
 
     assert not at.exception
     assert at.multiselect(key="team").value == before_team
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
     assert at.multiselect(key="locked_members").value == ["garchomp"]
     assert at.multiselect(key="available_pokemon").value == [
         "dragonite",
@@ -1395,7 +1445,9 @@ def test_workspace_download_contains_current_build_and_preferences(monkeypatch):
     monkeypatch.setattr(st, "download_button", capture_download)
 
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    open_member_editor(at, "tyranitar")
     at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
     at.multiselect(key="locked_members").set_value(["garchomp"]).run()
     at = select_available_pool(at, ["togekiss", "dragonite"])
@@ -1479,6 +1531,7 @@ def test_selected_move_details_render(
     )
 
     at = run_app_with_team("garchomp")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value([move]).run()
 
     assert not at.exception
@@ -1505,7 +1558,7 @@ def test_selected_move_details_render(
 
 def test_empty_move_selection_does_not_render_details():
     at = run_app_with_team("garchomp")
-
+    open_member_editor(at, "garchomp")
     assert not at.exception
     assert selected_move_tables(at) == []
     assert any(
@@ -1528,6 +1581,7 @@ def test_selected_move_details_remain_after_learnset_failure(monkeypatch):
     )
 
     at = run_app_with_team("garchomp")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
 
     def unavailable(name):
@@ -1558,26 +1612,28 @@ def fixed_loadouts(monkeypatch):
 
 def test_loadout_preview_and_cancel_do_not_change_build(fixed_loadouts):
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
     before_url = at.query_params["team"]
 
     at.button(key="preview_loadout_garchomp").click().run()
 
     assert not at.exception
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
-    assert at.multiselect(key="moves_tyranitar").value == []
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
+    assert at.session_state["moves_tyranitar"] == []
     assert at.query_params["team"] == before_url
     assert any(button.key == "confirm_loadout" for button in at.button)
 
     at.button(key="cancel_loadout").click().run()
 
     assert not at.exception
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
     assert not any(button.key == "confirm_loadout" for button in at.button)
 
 
 def test_apply_loadout_changes_only_target_and_preserves_preferences(fixed_loadouts):
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "tyranitar")
     at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
     at.multiselect(key="locked_members").set_value(["garchomp"]).run()
     at = select_available_pool(at, ["dragonite", "togekiss"])
@@ -1588,11 +1644,11 @@ def test_apply_loadout_changes_only_target_and_preserves_preferences(fixed_loado
     at.button(key="confirm_loadout").click().run()
 
     assert not at.exception
-    assert at.multiselect(key="moves_garchomp").value == [
+    assert at.session_state["moves_garchomp"] == [
         "earthquake",
         "ice-beam",
     ]
-    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    assert at.session_state["moves_tyranitar"] == ["ice-beam"]
     assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
     assert at.multiselect(key="locked_members").value == ["garchomp"]
     assert at.multiselect(key="available_pokemon").value == [
@@ -1612,10 +1668,11 @@ def test_manual_move_edit_dismisses_loadout_preview(fixed_loadouts):
     at.button(key="preview_loadout_garchomp").click().run()
     assert not at.exception
 
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["ice-beam"]).run()
 
     assert not at.exception
-    assert at.multiselect(key="moves_garchomp").value == ["ice-beam"]
+    assert at.session_state["moves_garchomp"] == ["ice-beam"]
     assert not any(button.key == "confirm_loadout" for button in at.button)
 
 
@@ -1627,7 +1684,7 @@ def test_remove_and_readd_member_does_not_restore_loadout_preview(fixed_loadouts
     at.multiselect(key="team").set_value(["tyranitar", "garchomp"]).run()
 
     assert not at.exception
-    assert at.multiselect(key="moves_garchomp").value == []
+    assert at.session_state["moves_garchomp"] == []
     assert not any(button.key == "confirm_loadout" for button in at.button)
 
 
@@ -1645,7 +1702,7 @@ def test_apply_loadout_clears_swap_preview_and_preserves_undo(fixed_loadouts):
     at.button(key="confirm_loadout").click().run()
 
     assert not at.exception
-    assert at.multiselect(key="moves_garchomp").value == [
+    assert at.session_state["moves_garchomp"] == [
         "earthquake",
         "ice-beam",
     ]
@@ -1669,6 +1726,7 @@ def test_empty_loadout_has_disabled_preview(monkeypatch):
 
 def test_matching_loadout_has_disabled_preview(fixed_loadouts):
     at = run_app_with_team("garchomp")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake", "ice-beam"]).run()
 
     assert not at.exception
@@ -1717,6 +1775,7 @@ def test_json_restore_handles_pending_loadout(
     mock_team_upload(monkeypatch, contents)
 
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
     at.button(key="preview_loadout_garchomp").click().run()
     assert not at.exception
@@ -1730,18 +1789,20 @@ def test_json_restore_handles_pending_loadout(
 
     if valid_file:
         assert not any(button.key == "confirm_loadout" for button in at.button)
-        assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
-        assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+        assert at.session_state["moves_garchomp"] == ["earthquake"]
+        assert at.session_state["moves_tyranitar"] == ["ice-beam"]
     else:
         assert at.session_state["pending_loadout"] == before_proposal
         assert any(button.key == "confirm_loadout" for button in at.button)
-        assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
-        assert at.multiselect(key="moves_tyranitar").value == []
+        assert at.session_state["moves_garchomp"] == ["earthquake"]
+        assert at.session_state["moves_tyranitar"] == []
 
 
 def test_undo_after_loadout_apply_restores_complete_pre_swap_build(fixed_loadouts):
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    open_member_editor(at, "tyranitar")
     at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
     at.multiselect(key="locked_members").set_value(["garchomp"]).run()
 
@@ -1750,7 +1811,7 @@ def test_undo_after_loadout_apply_restores_complete_pre_swap_build(fixed_loadout
     at.button(key="confirm_loadout").click().run()
 
     assert not at.exception
-    assert at.multiselect(key="moves_garchomp").value == [
+    assert at.session_state["moves_garchomp"] == [
         "earthquake",
         "ice-beam",
     ]
@@ -1759,8 +1820,8 @@ def test_undo_after_loadout_apply_restores_complete_pre_swap_build(fixed_loadout
 
     assert not at.exception
     assert at.multiselect(key="team").value == ["garchomp", "tyranitar"]
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
-    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
+    assert at.session_state["moves_tyranitar"] == ["ice-beam"]
     assert at.multiselect(key="locked_members").value == ["garchomp"]
     assert not any(button.key == "confirm_loadout" for button in at.button)
 
@@ -1781,6 +1842,7 @@ def test_applied_loadout_is_in_team_and_workspace_downloads(
     monkeypatch.setattr(st, "download_button", capture_download)
 
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "tyranitar")
     at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
 
     at.button(key="preview_loadout_garchomp").click().run()
@@ -1842,7 +1904,9 @@ def test_showdown_download_includes_manual_selected_moves(
     )
 
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["swords-dance", "earthquake"]).run()
+    open_member_editor(at, "tyranitar")
     at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
 
     assert not at.exception
@@ -1875,6 +1939,7 @@ def test_showdown_download_includes_applied_loadout(
     captured_showdown_download,
 ):
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "tyranitar")
     at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
 
     at.button(key="preview_loadout_garchomp").click().run()
@@ -1906,7 +1971,9 @@ def test_showdown_download_preserves_team_when_types_fail(
     failed_names,
 ):
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    open_member_editor(at, "tyranitar")
     at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
 
     def lookup_types(name, cache):
@@ -1979,8 +2046,8 @@ def test_naming_showdown_import_resolves_species(
 
     assert not at.exception
     assert at.multiselect(key="team").value == expected
-    assert at.multiselect(key=f"moves_{expected[0]}").value == ["earthquake"]
-    assert at.multiselect(key=f"moves_{expected[1]}").value == ["ice-beam"]
+    assert at.session_state[f"moves_{expected[0]}"] == ["earthquake"]
+    assert at.session_state[f"moves_{expected[1]}"] == ["ice-beam"]
 
     url_team = at.query_params["team"]
     assert url_team in (",".join(expected), [",".join(expected)])
@@ -2159,8 +2226,8 @@ def test_stat_failures_preserve_type_analysis(monkeypatch, failed_names):
     )
 
     moves_tab = app_tab(at, "Team builder")
-    assert moves_tab.multiselect(key="moves_garchomp")
-    assert moves_tab.multiselect(key="moves_tyranitar")
+    assert moves_tab.button(key="edit_member_garchomp")
+    assert moves_tab.button(key="edit_member_tyranitar")
     assert any(
         "Suggested moves are unavailable" in info.value
         for info in app_tab(at, "Swap suggestions").info
@@ -2188,10 +2255,16 @@ def test_stat_failures_preserve_type_analysis(monkeypatch, failed_names):
     )
     assert "Suggested moves" not in [header.value for header in at.subheader]
 
+    for name in ("garchomp", "tyranitar"):
+        open_member_editor(at, name)
+        assert app_tab(at, "Team builder").multiselect(key=f"moves_{name}")
+
 
 def test_stat_features_recover_without_losing_selected_moves(monkeypatch):
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    open_member_editor(at, "tyranitar")
     at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
 
     team_before = list(at.multiselect(key="team").value)
@@ -2205,8 +2278,8 @@ def test_stat_features_recover_without_losing_selected_moves(monkeypatch):
 
     assert not at.exception
     assert at.multiselect(key="team").value == team_before
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
-    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
+    assert at.session_state["moves_tyranitar"] == ["ice-beam"]
     assert "Suggested moves" not in [header.value for header in at.subheader]
 
     monkeypatch.setattr(
@@ -2219,8 +2292,8 @@ def test_stat_features_recover_without_losing_selected_moves(monkeypatch):
 
     assert not at.exception
     assert at.multiselect(key="team").value == team_before
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
-    assert at.multiselect(key="moves_tyranitar").value == ["ice-beam"]
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
+    assert at.session_state["moves_tyranitar"] == ["ice-beam"]
     assert "Suggested moves" in [header.value for header in at.subheader]
 
     stats_tab = app_tab(at, "Team builder")
@@ -2299,7 +2372,9 @@ def test_swap_confirmation_rechecks_types_before_changing_build(monkeypatch):
 
     at = run_app_with_team("garchomp,tyranitar")
     at.multiselect(key="locked_members").set_value(["tyranitar"]).run()
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    open_member_editor(at, "tyranitar")
     at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
 
     assert not at.exception
@@ -2330,7 +2405,7 @@ def test_swap_confirmation_rechecks_types_before_changing_build(monkeypatch):
     assert not at.exception
     assert at.multiselect(key="team").value == team_before
     assert at.multiselect(key="locked_members").value == locks_before
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
     raw_url_after = at.query_params["team"]
     url_after = raw_url_after if isinstance(raw_url_after, str) else ",".join(raw_url_after)
     assert url_after == url_before
@@ -2540,15 +2615,14 @@ def test_swap_preview_renders_type_explanation():
 
 def test_three_view_layout_places_controls_in_expected_views():
     at = run_app_with_team("garchomp,tyranitar")
-
     assert not at.exception
     builder = app_tab(at, "Team builder")
     suggestions = app_tab(at, "Swap suggestions")
     matchups = app_tab(at, "Opponent matchups")
-
     assert builder.multiselect(key="team")
-    assert builder.multiselect(key="moves_garchomp")
-    assert builder.multiselect(key="moves_tyranitar")
+    assert builder.button(key="edit_member_garchomp")
+    assert builder.button(key="edit_member_tyranitar")
+    assert not any(widget.key and widget.key.startswith("moves_") for widget in at.multiselect)
     assert builder.button(key="import_btn")
     assert builder.button(key="load_team_json")
     assert builder.button(key="load_workspace_json")
@@ -2558,12 +2632,18 @@ def test_three_view_layout_places_controls_in_expected_views():
     assert "Suggested moves" in [header.value for header in suggestions.subheader]
     assert "Suggested moves" not in [header.value for header in builder.subheader]
     assert matchups.multiselect(key="opponent_team")
-
-    for key in ("moves_garchomp", "moves_tyranitar"):
-        assert sum(widget.key == key for widget in at.multiselect) == 1
     assert suggestions.multiselect(key="locked_members")
     assert not any(widget.key == "locked_members" for widget in builder.multiselect)
     assert sum(widget.key == "locked_members" for widget in at.multiselect) == 1
+    for name in ("garchomp", "tyranitar"):
+        open_member_editor(at, name)
+        builder = app_tab(at, "Team builder")
+        assert builder.multiselect(key=f"moves_{name}")
+        assert [
+            widget.key
+            for widget in at.multiselect
+            if widget.key and widget.key.startswith("moves_")
+        ] == [f"moves_{name}"]
 
 
 def test_beginner_friendly_sections_render():
@@ -2585,19 +2665,22 @@ def test_beginner_friendly_sections_render():
 
 def test_compact_cards_preserve_moves_and_lock_indicator():
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
     at.multiselect(key="locked_members").set_value(["garchomp"]).run()
+    at.button(key="close_member_editor").click().run()
     at.run()
-
     assert not at.exception
     builder = app_tab(at, "Team builder")
     suggestions = app_tab(at, "Swap suggestions")
-    assert builder.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
     assert suggestions.multiselect(key="locked_members").value == ["garchomp"]
-    assert any(caption.value == "Kept on team" for caption in builder.caption)
-    assert any(caption.value == "1 of 4 moves selected" for caption in builder.caption)
-    for key in ("moves_garchomp", "moves_tyranitar", "locked_members"):
-        assert sum(widget.key == key for widget in at.multiselect) == 1
+    assert any(caption.value == "1/4 moves · Kept on team" for caption in builder.caption)
+    assert any(caption.value == "0/4 moves" for caption in builder.caption)
+    assert not any(widget.key and widget.key.startswith("moves_") for widget in at.multiselect)
+    assert sum(widget.key == "locked_members" for widget in at.multiselect) == 1
+    open_member_editor(at, "garchomp")
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
 
 
 @pytest.fixture
@@ -2622,23 +2705,26 @@ def test_member_stat_bars_render_values_and_shared_scale(monkeypatch, captured_s
     )
     st.cache_data.clear()
     at = run_app_with_team("garchomp,tyranitar")
-
     assert not at.exception
-    builder = app_tab(at, "Team builder")
-    labels = [expander.label for expander in builder.expander]
-    assert "Base stats — Garchomp" in labels
-    assert "Base stats — Tyranitar" in labels
-    expected = [
-        (stats[key] / move_ui.STAT_BAR_SCALE, f"{label}: {stats[key]}")
-        for stats in (FAKE_STATS, second_stats)
-        for key, label in move_ui.STAT_LABELS
-    ]
-    assert len(captured_stat_bars) == len(expected)
-    for (fraction, text), (expected_fraction, expected_text) in zip(
-        captured_stat_bars, expected, strict=True
-    ):
-        assert fraction == pytest.approx(expected_fraction)
-        assert text == expected_text
+    assert captured_stat_bars == []
+    for name, stats in (("garchomp", FAKE_STATS), ("tyranitar", second_stats)):
+        captured_stat_bars.clear()
+        open_member_editor(at, name)
+        builder = app_tab(at, "Team builder")
+        labels = [expander.label for expander in builder.expander]
+        assert f"Base stats — {name.title()}" in labels
+        other = "Tyranitar" if name == "garchomp" else "Garchomp"
+        assert f"Base stats — {other}" not in labels
+        expected = [
+            (stats[key] / move_ui.STAT_BAR_SCALE, f"{label}: {stats[key]}")
+            for key, label in move_ui.STAT_LABELS
+        ]
+        assert len(captured_stat_bars) == len(expected)
+        for (fraction, text), (expected_fraction, expected_text) in zip(
+            captured_stat_bars, expected, strict=True
+        ):
+            assert fraction == pytest.approx(expected_fraction)
+            assert text == expected_text
 
 
 @pytest.mark.parametrize(
@@ -2655,17 +2741,25 @@ def test_member_stat_bars_handle_missing_stats(monkeypatch, captured_stat_bars, 
     monkeypatch.setattr(fetch, "stats_cache_first", lookup)
     st.cache_data.clear()
     at = run_app_with_team("garchomp,tyranitar")
-
     assert not at.exception
-    builder = app_tab(at, "Team builder")
-    assert len(captured_stat_bars) == 6 * (2 - len(failed_names))
-    for name in failed_names:
-        label = name.replace("-", " ").title()
+    assert captured_stat_bars == []
+    for name in ("garchomp", "tyranitar"):
+        captured_stat_bars.clear()
+        open_member_editor(at, name)
+        builder = app_tab(at, "Team builder")
         panel = next(
-            expander for expander in builder.expander if expander.label == f"Base stats — {label}"
+            expander
+            for expander in builder.expander
+            if expander.label == f"Base stats — {name.title()}"
         )
-        assert any(f"Stats couldn't be loaded for {label}." in info.value for info in panel.info)
         assert builder.multiselect(key=f"moves_{name}")
+        if name in failed_names:
+            assert captured_stat_bars == []
+            assert any(
+                f"Stats couldn't be loaded for {name.title()}." in info.value for info in panel.info
+            )
+        else:
+            assert len(captured_stat_bars) == 6
 
 
 def test_suggestion_cards_match_ranked_replacements():
@@ -2700,6 +2794,7 @@ def test_suggestion_cards_match_ranked_replacements():
 
 def test_suggestion_cards_show_move_changes_before_applying(fixed_loadouts):
     at = run_app_with_team("garchomp,tyranitar")
+    open_member_editor(at, "garchomp")
     at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
 
     assert not at.exception
@@ -2709,7 +2804,7 @@ def test_suggestion_cards_show_move_changes_before_applying(fixed_loadouts):
     assert "Suggested moves: Earthquake, Ice Beam" in values
     assert "Would add: Ice Beam" in values
     assert "Would remove: None" in values
-    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
     assert suggestions.button(key="preview_loadout_garchomp")
     assert not any(
         {"Pokémon", "Moves"}.issubset(element.value.columns) for element in suggestions.dataframe
@@ -2849,3 +2944,79 @@ def test_matchup_cards_keep_detailed_threat_report_available():
     frame = report.dataframe[0].value
     assert frame["opponent"].tolist() == ["ferrothorn"]
     assert {"threatens", "answered_by", "threat_score"}.issubset(frame.columns)
+
+
+def test_shared_editor_preserves_moves_when_switching_members():
+    at = run_app_with_team("garchomp,tyranitar")
+
+    assert not at.exception
+    assert at.session_state["active_team_member"] is None
+    assert not any(widget.key and widget.key.startswith("moves_") for widget in at.multiselect)
+
+    at.button(key="edit_member_garchomp").click().run()
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+    at.button(key="edit_member_tyranitar").click().run()
+
+    assert not at.exception
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
+    assert [
+        widget.key for widget in at.multiselect if widget.key and widget.key.startswith("moves_")
+    ] == ["moves_tyranitar"]
+
+    at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
+    at.run()
+    at.button(key="edit_member_garchomp").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
+    assert at.session_state["moves_tyranitar"] == ["ice-beam"]
+
+    snapshot = at.session_state["team_state"]
+    assert snapshot.members[0].moves == ("earthquake",)
+    assert snapshot.members[1].moves == ("ice-beam",)
+
+
+def test_shared_editor_closes_when_active_member_is_removed():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.button(key="edit_member_tyranitar").click().run()
+    at.multiselect(key="moves_tyranitar").set_value(["ice-beam"]).run()
+
+    at.multiselect(key="team").set_value(["garchomp"]).run()
+
+    assert not at.exception
+    assert at.session_state["active_team_member"] is None
+    assert not any(widget.key and widget.key.startswith("moves_") for widget in at.multiselect)
+
+    with pytest.raises(KeyError):
+        at.session_state["moves_tyranitar"]
+
+    at.multiselect(key="team").set_value(["garchomp", "tyranitar"]).run()
+    at.button(key="edit_member_tyranitar").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_tyranitar").value == []
+
+
+def test_shared_editor_close_preserves_moves_and_team():
+    at = run_app_with_team("garchomp,tyranitar")
+    at.button(key="edit_member_garchomp").click().run()
+    at.multiselect(key="moves_garchomp").set_value(["earthquake"]).run()
+
+    before_snapshot = at.session_state["team_state"]
+    before_url = at.query_params["team"]
+
+    at.button(key="close_member_editor").click().run()
+    at.run()
+
+    assert not at.exception
+    assert at.session_state["active_team_member"] is None
+    assert at.session_state["moves_garchomp"] == ["earthquake"]
+    assert at.session_state["team_state"] == before_snapshot
+    assert at.query_params["team"] == before_url
+    assert not any(widget.key and widget.key.startswith("moves_") for widget in at.multiselect)
+    assert not any(button.key == "close_member_editor" for button in at.button)
+
+    at.button(key="edit_member_garchomp").click().run()
+
+    assert not at.exception
+    assert at.multiselect(key="moves_garchomp").value == ["earthquake"]
