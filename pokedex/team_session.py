@@ -6,6 +6,13 @@ from typing import Any
 from pokedex.team_state import TeamMember, TeamState
 
 
+def preserve_member_moves(state: MutableMapping[str, Any]) -> None:
+    """Keep current members' move selections when their editors are hidden."""
+    for name in state.get("team", []):
+        key = f"moves_{name}"
+        state[key] = list(state.get(key, []))
+
+
 def snapshot_team(state: MutableMapping[str, Any]) -> TeamState:
     """Capture current species, selected moves, and locks."""
     locks = set(state.get("locked_members", []))

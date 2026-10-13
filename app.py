@@ -41,7 +41,12 @@ from pokedex.showdown import parse_showdown
 from pokedex.swap_explanation import compare_type_analysis
 from pokedex.swap_explanation_ui import render_swap_explanation
 from pokedex.team_files import dump_team, load_team
-from pokedex.team_session import reconcile_team, restore_team, snapshot_team
+from pokedex.team_session import (
+    preserve_member_moves,
+    reconcile_team,
+    restore_team,
+    snapshot_team,
+)
 from pokedex.team_state import TeamMember, TeamState
 from pokedex.team_summary import summarize_team
 from pokedex.team_summary_ui import render_team_summary
@@ -517,6 +522,8 @@ if "locked_members" not in st.session_state:
     st.session_state["locked_members"] = []
 
 reconcile_team(st.session_state)
+preserve_member_moves(st.session_state)
+
 
 team_builder, swap_suggestions, opponent_matchups = st.tabs(
     ["Team builder", "Swap suggestions", "Opponent matchups"]
