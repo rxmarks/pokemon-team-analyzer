@@ -3,8 +3,8 @@
 pre-commit==4.7.0
 pytest==9.1.1
 pytest-cov==7.1.0
-ruff==0.17.0
+ruff==0.17.3
 mypy==2.4.0
 types-requests==2.33.0.20261006
 pandas-stubs==3.0.5.260914
-hypothesis==6.169.0
+hypothesis==6.170.12
