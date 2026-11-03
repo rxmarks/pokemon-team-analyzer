@@ -1,186 +1,186 @@
 {
-  "month": "2026-09",
+  "month": "2026-10",
   "format": "gen9ou-1695",
   "top": [
     {
       "rank": 1,
       "smogon_name": "Great Tusk",
       "name": "great-tusk",
-      "usage": 33.146
+      "usage": 32.81685
     },
     {
       "rank": 2,
-      "smogon_name": "Kingambit",
-      "name": "kingambit",
-      "usage": 30.65542
+      "smogon_name": "Gholdengo",
+      "name": "gholdengo",
+      "usage": 26.97154
     },
     {
       "rank": 3,
-      "smogon_name": "Gholdengo",
-      "name": "gholdengo",
-      "usage": 25.88588
+      "smogon_name": "Kingambit",
+      "name": "kingambit",
+      "usage": 26.8761
     },
     {
       "rank": 4,
-      "smogon_name": "Ogerpon-Wellspring",
-      "name": "ogerpon-wellspring-mask",
-      "usage": 20.35784
+      "smogon_name": "Zamazenta",
+      "name": "zamazenta",
+      "usage": 22.33532
     },
     {
       "rank": 5,
-      "smogon_name": "Zamazenta",
-      "name": "zamazenta",
-      "usage": 19.47242
+      "smogon_name": "Dragonite",
+      "name": "dragonite",
+      "usage": 19.49847
     },
     {
       "rank": 6,
-      "smogon_name": "Dragonite",
-      "name": "dragonite",
-      "usage": 18.2408
+      "smogon_name": "Raging Bolt",
+      "name": "raging-bolt",
+      "usage": 18.5646
     },
     {
       "rank": 7,
       "smogon_name": "Iron Valiant",
       "name": "iron-valiant",
-      "usage": 18.1374
+      "usage": 18.55635
     },
     {
       "rank": 8,
-      "smogon_name": "Raging Bolt",
-      "name": "raging-bolt",
-      "usage": 17.69534
+      "smogon_name": "Ogerpon-Wellspring",
+      "name": "ogerpon-wellspring-mask",
+      "usage": 17.69593
     },
     {
       "rank": 9,
-      "smogon_name": "Kyurem",
-      "name": "kyurem",
-      "usage": 17.00711
+      "smogon_name": "Samurott-Hisui",
+      "name": "samurott-hisui",
+      "usage": 14.64044
     },
     {
       "rank": 10,
-      "smogon_name": "Slowking-Galar",
-      "name": "slowking-galar",
-      "usage": 15.76289
+      "smogon_name": "Kyurem",
+      "name": "kyurem",
+      "usage": 14.48944
     },
     {
       "rank": 11,
-      "smogon_name": "Glimmora",
-      "name": "glimmora",
-      "usage": 15.10744
+      "smogon_name": "Slowking-Galar",
+      "name": "slowking-galar",
+      "usage": 14.1377
     },
     {
       "rank": 12,
-      "smogon_name": "Cinderace",
-      "name": "cinderace",
-      "usage": 14.77057
+      "smogon_name": "Iron Treads",
+      "name": "iron-treads",
+      "usage": 13.37302
     },
     {
       "rank": 13,
-      "smogon_name": "Landorus-Therian",
-      "name": "landorus-therian",
-      "usage": 13.3544
+      "smogon_name": "Cinderace",
+      "name": "cinderace",
+      "usage": 13.2369
     },
     {
       "rank": 14,
-      "smogon_name": "Samurott-Hisui",
-      "name": "samurott-hisui",
-      "usage": 13.15058
+      "smogon_name": "Landorus-Therian",
+      "name": "landorus-therian",
+      "usage": 13.03895
     },
     {
       "rank": 15,
-      "smogon_name": "Hatterene",
-      "name": "hatterene",
-      "usage": 12.10369
+      "smogon_name": "Glimmora",
+      "name": "glimmora",
+      "usage": 12.97362
     },
     {
       "rank": 16,
-      "smogon_name": "Gliscor",
-      "name": "gliscor",
-      "usage": 11.54687
+      "smogon_name": "Hatterene",
+      "name": "hatterene",
+      "usage": 12.49072
     },
     {
       "rank": 17,
-      "smogon_name": "Iron Treads",
-      "name": "iron-treads",
-      "usage": 10.84391
+      "smogon_name": "Gliscor",
+      "name": "gliscor",
+      "usage": 11.38388
     },
     {
       "rank": 18,
-      "smogon_name": "Dragapult",
-      "name": "dragapult",
-      "usage": 10.37021
+      "smogon_name": "Ting-Lu",
+      "name": "ting-lu",
+      "usage": 11.02373
     },
     {
       "rank": 19,
-      "smogon_name": "Corviknight",
-      "name": "corviknight",
-      "usage": 10.22131
+      "smogon_name": "Dragapult",
+      "name": "dragapult",
+      "usage": 10.77967
     },
     {
       "rank": 20,
-      "smogon_name": "Rillaboom",
-      "name": "rillaboom",
-      "usage": 9.6914
+      "smogon_name": "Corviknight",
+      "name": "corviknight",
+      "usage": 10.57846
     },
     {
       "rank": 21,
-      "smogon_name": "Darkrai",
-      "name": "darkrai",
-      "usage": 9.23794
+      "smogon_name": "Iron Moth",
+      "name": "iron-moth",
+      "usage": 10.00578
     },
     {
       "rank": 22,
-      "smogon_name": "Ting-Lu",
-      "name": "ting-lu",
-      "usage": 9.15065
+      "smogon_name": "Darkrai",
+      "name": "darkrai",
+      "usage": 9.41984
     },
     {
       "rank": 23,
-      "smogon_name": "Pecharunt",
-      "name": "pecharunt",
-      "usage": 9.09778
+      "smogon_name": "Alomomola",
+      "name": "alomomola",
+      "usage": 9.40557
     },
     {
       "rank": 24,
-      "smogon_name": "Alomomola",
-      "name": "alomomola",
-      "usage": 8.88864
+      "smogon_name": "Pecharunt",
+      "name": "pecharunt",
+      "usage": 8.33355
     },
     {
       "rank": 25,
-      "smogon_name": "Iron Moth",
-      "name": "iron-moth",
-      "usage": 8.78654
+      "smogon_name": "Ceruledge",
+      "name": "ceruledge",
+      "usage": 8.29273
     },
     {
       "rank": 26,
-      "smogon_name": "Ceruledge",
-      "name": "ceruledge",
-      "usage": 7.98261
+      "smogon_name": "Rillaboom",
+      "name": "rillaboom",
+      "usage": 6.4877
     },
     {
       "rank": 27,
-      "smogon_name": "Cresselia",
-      "name": "cresselia",
-      "usage": 7.81648
+      "smogon_name": "Clefable",
+      "name": "clefable",
+      "usage": 6.36252
     },
     {
       "rank": 28,
-      "smogon_name": "Clefable",
-      "name": "clefable",
-      "usage": 7.26364
+      "smogon_name": "Zapdos",
+      "name": "zapdos",
+      "usage": 6.32342
     },
     {
       "rank": 29,
-      "smogon_name": "Ogerpon",
-      "name": "ogerpon",
-      "usage": 6.31955
+      "smogon_name": "Walking Wake",
+      "name": "walking-wake",
+      "usage": 6.16603
     },
     {
       "rank": 30,
-      "smogon_name": "Deoxys-Speed",
-      "name": "deoxys-speed",
-      "usage": 6.04933
+      "smogon_name": "Cresselia",
+      "name": "cresselia",
+      "usage": 6.0386
     }
   ]
 }
